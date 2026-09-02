@@ -1,0 +1,51 @@
+:root {
+  --bg: #00b59b;
+  --card-bg: rgba(255, 255, 255, 0.9);
+  --navy: #006b5b;
+  --dark: #181818;
+  --muted: #555;
+  --border: rgba(0, 0, 0, 0.1);
+  --white: #ffffff;
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --radius: 10px;
+  --font: 'Montserrat', Arial, sans-serif;
+
+  --header-navy: #0f4761;
+  --accent-yellow: #fac400;
+  --danger: #c0392b;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  width: 100%;
+}
+
+body {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: #f9f7f7;
+  color: var(--dark);
+  overflow: hidden;
+}
+
+button {
+  font-family: inherit;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
