@@ -9,15 +9,6 @@ import SmartSearch from './SmartSearch';
 import ColumnSelect from './ColumnSelect';
 import './FilterBuilder.css';
 
-/**
- * Resolves typed (comma/newline separated) tokens into filter values.
- * A token matching a known value (case-insensitively) resolves to that
- * value's canonical casing; otherwise it's taken as-is, since the loaded
- * values list is often just a page (or empty, for a not-yet-searched or
- * high-cardinality free-text column like CASE_ID) rather than the full set.
- * Numeric-operator tokens (">50" etc.) still expand against known values —
- * an operator is meaningless without something to match it against.
- */
 function sameValues(a = [], b = []) {
   if (a.length !== b.length) return false;
   const left = [...a].map(String).sort();
@@ -35,10 +26,6 @@ function resolveTextInput(rawText, knownValues) {
   const resolved = new Set();
 
   tokens.forEach((tok) => {
-    // Not gated on isNumericColumn — see the matching note in
-    // useColumnValues.js: that flag can still be loading when a token is
-    // typed, which would otherwise let "<500" through as a literal filter
-    // value instead of being expanded against knownValues.
     const opMatch = parseNumericOp(tok);
     if (opMatch) {
       const matches = knownValues.filter((v) => valueMatchesOp(v, opMatch.op, opMatch.num));
@@ -85,14 +72,8 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
     columnInfo,
   } = useColumnValues(selectedColumn);
 
-  // The values this panel itself last wrote into appliedFilters for the open
-  // column. Lets the reconciliation effect below tell "context changed
-  // because we pushed it" apart from "context changed because a native
-  // QuickSight Control (or bookmark, or search) moved under us".
   const lastPushedValuesRef = useRef([]);
 
-  // Pre-fill checked values + text area with whatever's already applied
-  // for this column when it's opened.
   useEffect(() => {
     if (!selectedColumn) {
       setCheckedValues([]);
@@ -105,15 +86,8 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
     setTextInput('');
     setSearchTerm('');
     lastPushedValuesRef.current = existing;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedColumn]);
 
-  // Keep the open column's checkboxes live against Controls-driven or other
-  // external changes to appliedFilters — e.g. a viewer moving the matching
-  // native QuickSight Control while this column is open in the panel. Only
-  // reconciles when the change didn't originate from this panel's own push
-  // (Apply filter / remove value / clear row), so it never fights the user
-  // mid-edit.
   useEffect(() => {
     if (!selectedColumn) return;
     const current = appliedFilters[selectedColumn]?.values || [];
@@ -121,7 +95,6 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
     setCheckedValues(current);
     setTextInput('');
     lastPushedValuesRef.current = current;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [appliedFilters, selectedColumn]);
 
   const { values: resolvedTyped } = useMemo(
@@ -134,10 +107,6 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
     [checkedValues, resolvedTyped]
   );
 
-  // Drives the "Select all" checkbox's checked/indeterminate state — checked
-  // when every value currently in the list is selected, indeterminate when
-  // only some are (neither maps to a plain boolean `checked` prop, so the
-  // indeterminate half is applied imperatively via selectAllRef below).
   const allDisplayedChecked = useMemo(
     () =>
       displayedValues.length > 0 &&
@@ -155,24 +124,14 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
     if (selectAllRef.current) selectAllRef.current.indeterminate = someDisplayedChecked;
   }, [someDisplayedChecked]);
 
-  // useCallback: passed to memo()-wrapped ValuesList as onToggleValue — kept
-  // referentially stable (uses the functional setState form, no deps) so
-  // that memo actually skips re-rendering the checkbox list on unrelated
-  // FilterBuilder re-renders (e.g. every keystroke in the textarea below).
   const toggleValue = useCallback((v) => {
     setCheckedValues((prev) => {
-      // Remove by numeric-aware match (not just exact string) — a value can
-      // already be checked in a different textual form (see valuesMatch),
-      // and removing it should clear that existing entry rather than fail
-      // to find it and add a mismatched duplicate alongside it.
       const idx = prev.findIndex((x) => valuesMatch(x, v));
       return idx !== -1 ? prev.filter((_, i) => i !== idx) : [...prev, v];
     });
   }, []);
 
   const toggleSelectAll = () => {
-    // Every displayed value is valid now that the list is cascaded server-side,
-    // so there is no disabled subset to skip over.
     const selectable = displayedValues.map(String);
     const anyUnchecked = selectable.some((v) => !checkedValues.some((cv) => valuesMatch(cv, v)));
     if (!anyUnchecked) {
@@ -185,9 +144,6 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
 
   const handleApply = () => {
     if (!selectedColumn) return;
-    // paramMap from /columns arrives param -> column; FilterContext
-    // normalizes it, so this resolves correctly either way and falls back to
-    // the column name when a column has no explicit parameter.
     const paramName = paramForColumn(selectedColumn);
     if (!paramName) {
       setStatus({ msg: `No parameter for: ${selectedColumn}`, type: 'err' });
@@ -195,14 +151,11 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
     }
     const values = [...new Set([...checkedValues, ...resolvedTyped])];
 
-    // Unchecking every value (with nothing typed) for a column that already
-    // has an applied filter clears it instead of being a no-op — mirrors how
-    // removing the last chip in Applied Filters behaves.
     if (!values.length) {
       if (!appliedFilters[selectedColumn]) return;
       lastPushedValuesRef.current = [];
       setColumnFilter(selectedColumn, [], paramName);
-      onFilterApplied?.(paramName, ['All']);
+      onFilterApplied?.(selectedColumn, ['All']);
       setSelectedColumn('');
       setCheckedValues([]);
       setTextInput('');
@@ -211,7 +164,7 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
 
     lastPushedValuesRef.current = values;
     setColumnFilter(selectedColumn, values, paramName);
-    onFilterApplied?.(paramName, values);
+    onFilterApplied?.(selectedColumn, values);
 
     setSelectedColumn('');
     setCheckedValues([]);
@@ -227,20 +180,17 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
     onResetAll?.();
   };
 
-  // useCallback: both passed to memo()-wrapped AppliedFilters — see the note
-  // on toggleValue above for why that only helps when these stay stable.
   const handleRemoveValue = useCallback(
     (col, value) => {
       removeFilterValue(col, value);
-      const paramName = appliedFilters[col]?.paramName || paramForColumn(col);
       const remaining = (appliedFilters[col]?.values || []).filter((v) => String(v) !== value);
-      onFilterApplied?.(paramName, remaining.length ? remaining : ['All']);
+      onFilterApplied?.(col, remaining.length ? remaining : ['All']);
       if (selectedColumn === col) {
         lastPushedValuesRef.current = remaining;
         setCheckedValues((prev) => prev.filter((v) => v !== value));
       }
     },
-    [removeFilterValue, appliedFilters, paramForColumn, onFilterApplied, selectedColumn]
+    [removeFilterValue, appliedFilters, onFilterApplied, selectedColumn]
   );
 
   const handleClearColumnRow = useCallback(
@@ -257,15 +207,6 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
     [appliedFilters, paramForColumn, clearColumn, selectedColumn, onClearRow]
   );
 
-  // useCallback: passed to memo()-wrapped SmartSearch as onApplySelections —
-  // see the note on toggleValue above for why that only helps when this
-  // stays stable.
-  //
-  // `matchedByColumn` is every value Smart Search showed as an option for
-  // each column in its results (checked or not), not just the currently
-  // checked ones in `selections`. Without it, this could only ever add
-  // values — a match the user unchecked (because it was already applied)
-  // would have nothing telling it to actually drop out.
   const handleApplySearchSelections = useCallback(
     (selections, matchedByColumn = {}) => {
       const byColumn = {};
@@ -282,8 +223,6 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
       selections.forEach(({ column, value }) => {
         if (!byColumn[column]) {
           byColumn[column] = {
-            // The normalized map is the single source of truth for parameter
-            // names — /search echoes its own paramName, which can disagree.
             paramName: paramForColumn(column),
             values: new Set(appliedFilters[column]?.values || []),
           };
@@ -293,7 +232,7 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
       Object.entries(byColumn).forEach(([col, { paramName, values }]) => {
         const valuesArr = [...values];
         setColumnFilter(col, valuesArr, paramName);
-        onFilterApplied?.(paramName, valuesArr.length ? valuesArr : ['All']);
+        onFilterApplied?.(col, valuesArr.length ? valuesArr : ['All']);
       });
     },
     [paramForColumn, appliedFilters, setColumnFilter, onFilterApplied]
@@ -304,8 +243,6 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
   return (
     <div className="fb-panel">
       <div className="fb-title">
-        {/* Filter Builder */}
-        {/* {appliedCount > 0 && <span className="fb-applied-badge">{appliedCount}</span>} */}
       </div>
       <SmartSearch onApplySelections={handleApplySearchSelections} />
 

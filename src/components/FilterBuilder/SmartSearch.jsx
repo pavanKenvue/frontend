@@ -15,20 +15,6 @@ function HighlightedText({ text, query }) {
   );
 }
 
-/**
- * Global "Smart Search" across all columns. Ported from
- * triggerSearch()/runSmartSearch()/renderSearchResults() in the vanilla JS.
- *
- * Backed by the not-yet-contracted /search endpoint (see api/filters.js) —
- * wire the real RDS-backed route in there once available.
- *
- * Wrapped in memo(): this owns its own search state (query, results,
- * selections) entirely independently of the rest of FilterBuilder, so
- * without this it re-rendered — recomputing every group's fully-/
- * partially-selected state — on every unrelated keystroke in the values
- * checklist or textarea above. The caller memoizes onApplySelections so this
- * takes effect.
- */
 function SmartSearch({ onApplySelections }) {
   const { appliedFilters } = useFilters();
   const [query, setQuery] = useState('');
@@ -36,22 +22,11 @@ function SmartSearch({ onApplySelections }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [selections, setSelections] = useState({}); // key -> { column, paramName, value }
-  // Snapshot of `selections` right after a search resolves (i.e. exactly
-  // the matches that were already applied) — compared against the live
-  // `selections` to tell "nothing changed" apart from "the user unchecked
-  // something that was already applied", which still needs the Apply button
-  // to stay visible even though it drops selCount to 0.
+  const [selections, setSelections] = useState({});
   const initialSelectionsRef = useRef({});
   const inputRef = useRef(null);
   const wrapRef = useRef(null);
   const searchRowRef = useRef(null);
-  // Where to float the results dropdown — captured once when a search
-  // opens it (see the render-time positioning below), same position:fixed +
-  // measured-rect approach AppliedFilters' ValuesPopover uses, so the
-  // dropdown overlays on top of the rest of the Filter Builder (including
-  // escaping .fb-panel's own overflow:hidden) instead of pushing everything
-  // below it down the panel.
   const [anchorRect, setAnchorRect] = useState(null);
 
   const runSearch = async () => {
@@ -67,9 +42,6 @@ function SmartSearch({ onApplySelections }) {
       const data = await searchAllColumns({ q });
       const nextResults = data?.results || [];
       setResults(nextResults);
-      // Pre-check whichever matches are already applied for their column,
-      // so re-running a search a viewer has already filtered on reflects
-      // that instead of showing every match unchecked again.
       const preselected = {};
       nextResults.forEach((group) => {
         const appliedValues = appliedFilters[group.column]?.values;
@@ -122,7 +94,6 @@ function SmartSearch({ onApplySelections }) {
     !isGroupFullySelected(group) &&
     group.matches.some((value) => selections[keyFor(group.column, group.paramName, value)]);
 
-  // Checkbox toggle: checked -> select every match in this group, unchecked -> deselect them all.
   const toggleGroupSelectAll = (group) => {
     const clearing = isGroupFullySelected(group);
     setSelections((prev) => {
@@ -140,7 +111,6 @@ function SmartSearch({ onApplySelections }) {
   const isSomeResultsSelected =
     !isAllResultsSelected && results.some((group) => isGroupFullySelected(group) || isGroupPartiallySelected(group));
 
-  // Same checked/unchecked toggle as toggleGroupSelectAll, but across every result group.
   const toggleSelectAllResults = () => {
     const clearing = isAllResultsSelected;
     setSelections((prev) => {
@@ -157,19 +127,12 @@ function SmartSearch({ onApplySelections }) {
   };
 
   const selCount = Object.keys(selections).length;
-  // True once the checkboxes disagree with what was already applied when
-  // this search last ran — covers unchecking a previously-applied match
-  // down to zero, not just checking new ones.
   const initialKeys = Object.keys(initialSelectionsRef.current);
   const hasChanges =
     initialKeys.length !== selCount || initialKeys.some((k) => !selections[k]);
 
   const applySelections = () => {
     if (!hasChanges) return;
-    // Every column this search matched, so the caller can drop values the
-    // user unchecked — not just add whatever's still checked. Without this
-    // scope, unchecking an already-applied match would have nothing telling
-    // FilterContext to remove it.
     const matchedByColumn = {};
     results.forEach((group) => {
       matchedByColumn[group.column] = group.matches.map(String);
@@ -186,10 +149,6 @@ function SmartSearch({ onApplySelections }) {
     }, 150);
   };
 
-  // Fixed to the viewport, not flowed under the search row — anchored via
-  // the measured rect from when the dropdown opened. Flips above the input
-  // when there isn't room below (e.g. the search sits near the bottom of a
-  // short viewport), same as AppliedFilters' ValuesPopover.
   let dropdownStyle = null;
   if (open && anchorRect) {
     const viewportMargin = 8;
@@ -227,9 +186,6 @@ function SmartSearch({ onApplySelections }) {
         )}
       </div>
 
-      {/* Stays closed for the whole request — the button above carries the
-          loading state instead of showing it in here — and only opens once
-          results/error are ready. */}
       {dropdownStyle && !loading && (
         <div className="fb-search-dropdown" style={dropdownStyle}>
           <div className="fb-search-results">

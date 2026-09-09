@@ -8,20 +8,11 @@ import {
 } from '../api/filters';
 import { useFilters } from '../context/FilterContext';
 
-/**
- * Saved filter sets. A bookmark stores the FilterContext shape verbatim
- * ({ [column]: { values, paramName } }), so opening one is just setting state
- * and re-pushing every parameter to QuickSight.
- */
 export function useBookmarks({ onApplied } = {}) {
   const { appliedFilters, setAppliedFilters } = useFilters();
   const [bookmarks, setBookmarks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  // Full { filters } payload per bookmark id, fetched on demand (expanding a
-  // row's detail view, or building its local PDF) and cached so re-opening
-  // the same row doesn't re-fetch. listBookmarks() only returns metadata
-  // (filterCount) — the filter values themselves live behind getBookmark(id).
   const detailCacheRef = useRef({});
 
   const refresh = useCallback(async () => {
@@ -62,12 +53,11 @@ export function useBookmarks({ onApplied } = {}) {
       const filters = record?.filters || {};
       detailCacheRef.current[id] = filters;
       setAppliedFilters(filters);
-      // Re-push every saved parameter so the dashboard matches the sidebar.
       onApplied?.(
         Object.fromEntries(
-          Object.values(filters)
-            .filter((f) => f?.paramName)
-            .map((f) => [f.paramName, f.values])
+          Object.entries(filters)
+            .filter(([, f]) => f?.values?.length)
+            .map(([col, f]) => [col, f.values])
         )
       );
       return record;

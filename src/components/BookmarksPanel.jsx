@@ -142,13 +142,12 @@ export default function BookmarksPanel({ open, onClose, onApplied }) {
     getFilters,
   } = useBookmarks({ onApplied });
 
-  // 'list' mirrors the default My Bookmarks view; '+ Add' switches to 'save'.
   const [view, setView] = useState('list');
   const [name, setName] = useState('');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
   const [busy, setBusy] = useState(false);
-  const [saveResult, setSaveResult] = useState(null); // { id, name, url }
+  const [saveResult, setSaveResult] = useState(null);
   const [expandedId, setExpandedId] = useState(null);
   const [detailById, setDetailById] = useState({});
   const [openMenuId, setOpenMenuId] = useState(null);
@@ -168,14 +167,10 @@ export default function BookmarksPanel({ open, onClose, onApplied }) {
     setQuery('');
   }, [open, refresh]);
 
-  // Back to page 1 whenever the search narrows/widens the list or the
-  // underlying bookmark count changes (save/delete/refresh) — the current
-  // page number otherwise has no guaranteed relationship to the new list.
   useEffect(() => {
     setPage(1);
   }, [query, bookmarks.length]);
 
-  // Close any open row "⋮" menu on an outside click.
   useEffect(() => {
     if (!openMenuId) return;
     const onDocClick = () => setOpenMenuId(null);
@@ -491,22 +486,11 @@ export default function BookmarksPanel({ open, onClose, onApplied }) {
                           onClick={(e) => e.stopPropagation()}
                           onChange={(e) => setRenameValue(e.target.value)}
                           onKeyDown={(e) => {
-                            // Both keys already resolve the rename here —
-                            // the input unmounts right after (isRenaming
-                            // flips false), which fires a blur on its way
-                            // out. Without this flag that blur would call
-                            // commitRename a second time (double-committing
-                            // on Enter) or re-commit stale text after an
-                            // Escape-cancel.
                             if (e.key === 'Enter') {
                               skipNextRenameBlurRef.current = true;
                               commitRename(b.id, b.name);
                             }
                             if (e.key === 'Escape') {
-                              // Stop this from also bubbling up to the
-                              // panel-level Escape listener, which would
-                              // close the whole panel instead of just
-                              // cancelling the rename.
                               e.stopPropagation();
                               skipNextRenameBlurRef.current = true;
                               setRenamingId(null);

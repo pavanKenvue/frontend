@@ -1,13 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getHealth } from '../api/filters';
 
-/**
- * Surfaces backend problems that would otherwise look like a broken UI.
- *
- * The three worth showing: the API is unreachable, Oracle is down, or the
- * facet layer has not been built (which means every cascade falls back to a
- * full scan of the fact table and will feel slow).
- */
 export default function ApiStatusBanner() {
   const [issue, setIssue] = useState(null);
 

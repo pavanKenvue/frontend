@@ -1,8 +1,17 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import { buildParamIndex, normalizeParamMap } from '../utils/paramMap';
+import columnDatasetMap from '../../column_dataset_map.json';
 
-// Shape mirrors the old vanilla `appliedFilters` global:
-// { [column]: { values: string[], paramName: string } }
+function filterGroupColumnsFromDatasetMap() {
+  const cols = new Set();
+  Object.entries(columnDatasetMap).forEach(([col, entries]) => {
+    if (Array.isArray(entries) && entries.length && entries.every((e) => !e.parameter)) {
+      cols.add(col);
+    }
+  });
+  return cols;
+}
+
 const FilterContext = createContext(null);
 
 function sameValues(a = [], b = []) {
@@ -14,15 +23,15 @@ function sameValues(a = [], b = []) {
 
 export function FilterProvider({ children }) {
   const [appliedFilters, setAppliedFilters] = useState({});
-  // Normalized from /columns — see utils/paramMap.js. The raw payload's
-  // orientation is not trusted; these two are always the right way round.
   const [columnToParams, setColumnToParams] = useState({});
   const [paramToColumn, setParamToColumn] = useState({});
   const [numericColumns, setNumericColumns] = useState(new Set());
-  // { [column]: { dataType, numDistinct, tier, filterable, requiresSearch } }
   const [columnMeta, setColumnMeta] = useState({});
+  const [filterGroupColumns, setFilterGroupColumns] = useState(filterGroupColumnsFromDatasetMap);
+  const [datasetMap, setDatasetMap] = useState({});
+  const [crossDatasetColumns, setCrossDatasetColumns] = useState(new Set());
+  const [defaultDatasetIdentifier, setDefaultDatasetIdentifier] = useState('');
 
-  // Accepts the raw GET /columns response and normalizes it once.
   const loadParamMap = useCallback((data) => {
     const { columnToParams: c2p, paramToColumn: p2c, reversed } = normalizeParamMap(data);
     if (reversed) {
@@ -30,38 +39,64 @@ export function FilterProvider({ children }) {
     }
     setColumnToParams(c2p);
     setParamToColumn(p2c);
+    if (Array.isArray(data?.filterGroupColumns)) {
+      setFilterGroupColumns(new Set(data.filterGroupColumns.map(String)));
+      console.log('[filterGroups] filterGroupColumns loaded from backend:', data.filterGroupColumns);
+    } else {
+      setFilterGroupColumns((prev) => {
+        console.warn(
+          '[filterGroups] Backend /columns had no "filterGroupColumns" array — keeping the hardcoded fallback',
+          [...prev]
+        );
+        return prev;
+      });
+    }
+    if (data?.datasetMap && typeof data.datasetMap === 'object') {
+      setDatasetMap(data.datasetMap);
+      console.log('[filterGroups] datasetMap loaded from backend:', data.datasetMap);
+    } else {
+      console.warn(
+        '[filterGroups] Backend /columns had no "datasetMap" object — FilterGroups columns will fall back to the bundled column_dataset_map.json / default dataset identifier'
+      );
+    }
+    if (Array.isArray(data?.crossDatasetColumns)) {
+      setCrossDatasetColumns(new Set(data.crossDatasetColumns.map(String)));
+      console.log('[filterGroups] crossDatasetColumns loaded from backend:', data.crossDatasetColumns);
+    } else {
+      console.warn(
+        '[filterGroups] Backend /columns had no "crossDatasetColumns" array — every FilterGroups column will use CrossDataset: SINGLE_DATASET'
+      );
+    }
+    if (typeof data?.defaultDatasetIdentifier === 'string' && data.defaultDatasetIdentifier) {
+      setDefaultDatasetIdentifier(data.defaultDatasetIdentifier);
+    }
   }, []);
 
   const paramIndex = useMemo(() => buildParamIndex(paramToColumn), [paramToColumn]);
 
-  /** Every QuickSight parameter bound to a column. Order is stable. */
   const paramsForColumn = useCallback(
     (column) => columnToParams[column] || [column],
     [columnToParams]
   );
 
-  /** The single canonical parameter to push for a column. */
   const paramForColumn = useCallback(
     (column) => paramsForColumn(column)[0],
     [paramsForColumn]
   );
 
-  /** Reverse lookup: which column does this QuickSight parameter drive? */
   const columnForParam = useCallback(
     (param) => paramIndex.get(String(param).toLowerCase())?.column || null,
     [paramIndex]
   );
 
-  /**
-   * True only for parameters that are backed by a Controls filter we know
-   * about. QuickSight's PARAMETERS_CHANGED fires for every parameter in the
-   * dashboard — including internal ones driven by visual interactions and
-   * calculated fields — so this is the gate that keeps the Filter Builder
-   * from being flooded with events it should not react to.
-   */
   const isControlParam = useCallback(
     (param) => Boolean(param) && paramIndex.has(String(param).toLowerCase()),
     [paramIndex]
+  );
+
+  const isFilterGroupColumn = useCallback(
+    (column) => filterGroupColumns.has(column),
+    [filterGroupColumns]
   );
 
   const setColumnFilter = useCallback((col, values, paramName) => {
@@ -75,8 +110,6 @@ export function FilterProvider({ children }) {
       const nextValues = values.map(String);
       const existing = prev[col];
       const nextParam = paramName || existing?.paramName || col;
-      // No-op guard: re-setting identical state would otherwise re-render the
-      // whole tree on every echoed QuickSight event.
       if (existing && existing.paramName === nextParam && sameValues(existing.values, nextValues)) {
         return prev;
       }
@@ -87,11 +120,6 @@ export function FilterProvider({ children }) {
     });
   }, []);
 
-  /**
-   * Applies a batch of changes that originated in QuickSight, in a single
-   * state update. `updates` is [{ column, values, paramName }]; an empty
-   * `values` clears that column.
-   */
   const applyExternalFilters = useCallback((updates) => {
     if (!updates?.length) return;
     setAppliedFilters((prev) => {
@@ -149,8 +177,6 @@ export function FilterProvider({ children }) {
     setAppliedFilters({});
   }, []);
 
-  // Build the previous_filters payload for /filter_multiple_values,
-  // excluding the column currently being edited (cascading semantics).
   const buildPreviousFilters = useCallback(
     (excludeColumn) =>
       Object.entries(appliedFilters)
@@ -174,6 +200,11 @@ export function FilterProvider({ children }) {
       setNumericColumns,
       columnMeta,
       setColumnMeta,
+      filterGroupColumns,
+      isFilterGroupColumn,
+      datasetMap,
+      crossDatasetColumns,
+      defaultDatasetIdentifier,
       setColumnFilter,
       applyExternalFilters,
       removeFilterValue,
@@ -192,6 +223,11 @@ export function FilterProvider({ children }) {
       isControlParam,
       numericColumns,
       columnMeta,
+      filterGroupColumns,
+      isFilterGroupColumn,
+      datasetMap,
+      crossDatasetColumns,
+      defaultDatasetIdentifier,
       setColumnFilter,
       applyExternalFilters,
       removeFilterValue,

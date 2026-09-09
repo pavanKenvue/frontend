@@ -1,15 +1,5 @@
 import { memo, useMemo, useRef, useState } from 'react';
 
-/**
- * Searchable replacement for the plain <select> column picker — the column
- * list can run into the hundreds, so a native dropdown makes finding one by
- * scrolling impractical. Typing filters the list; clicking a row selects it.
- *
- * Wrapped in memo(): `columns` and `onChange` (setSelectedColumn) are both
- * referentially stable across FilterBuilder re-renders, so this only
- * actually re-renders when `value`/`disabled` genuinely change instead of on
- * every unrelated keystroke elsewhere in the panel.
- */
 function ColumnSelect({ columns, value, onChange, disabled }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');

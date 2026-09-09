@@ -1,13 +1,3 @@
-/**
- * Client-side AES-GCM encrypt/decrypt for bookmark filter payloads.
- *
- * A bookmark's `filters` never leaves the browser in plain form — the API
- * only ever stores/returns the opaque { encrypted, iv } pair (see
- * createBookmark()/getBookmark() in ../api/filters.js). Same fixed
- * passphrase/salt/KDF as the earlier vanilla-JS implementation's
- * bmGetAESKey()/bmEncryptData()/bmDecryptData(), so a bookmark saved by
- * either implementation decrypts correctly in the other.
- */
 const PASSPHRASE = 'Kenvue-PharmaVig-2024';
 const SALT = 'kenvue-salt';
 
@@ -37,7 +27,6 @@ function b64ToBuf(b64) {
   return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
 }
 
-/** Encrypts a plain object -> { encrypted, iv } (both base64 strings). */
 export async function encryptBookmarkData(obj) {
   const key = await getAESKey();
   const iv = crypto.getRandomValues(new Uint8Array(12));
@@ -50,7 +39,6 @@ export async function encryptBookmarkData(obj) {
   return { encrypted: bufToB64(cipherBuf), iv: bufToB64(iv) };
 }
 
-/** Reverses encryptBookmarkData() — { encrypted, iv } (base64) -> the original object. */
 export async function decryptBookmarkData(encrypted, iv) {
   const key = await getAESKey();
   const plain = await crypto.subtle.decrypt(

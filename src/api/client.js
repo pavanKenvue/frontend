@@ -1,8 +1,3 @@
-// Central HTTP client for the backend API.
-//
-// In development, leave VITE_API_BASE_URL empty and let the Vite dev proxy
-// forward /api -> http://localhost:8000 (see vite.config.js). That avoids CORS
-// entirely. In production set VITE_API_BASE_URL to the API Gateway stage URL.
 const RAW_BASE = import.meta.env.VITE_API_BASE_URL;
 const BASE_URL = RAW_BASE.replace(/\/$/, '');
 
@@ -24,7 +19,6 @@ class ApiError extends Error {
 
 function messageFrom(data, status) {
   if (data && typeof data === 'object') {
-    // FastAPI validation errors come back as { detail: [...] }.
     if (Array.isArray(data.detail) && data.detail.length) {
       return data.detail.map((d) => d.msg || String(d)).join('; ');
     }
@@ -48,8 +42,6 @@ async function request(path, { method = 'GET', body, params, signal, timeoutMs }
     if (qsStr) url += `?${qsStr}`;
   }
 
-  // Compose the caller's abort signal with a timeout, so a hung request
-  // surfaces as an error instead of a spinner that never stops.
   const timeoutController = new AbortController();
   const timer = setTimeout(
     () => timeoutController.abort(new DOMException('Request timed out', 'TimeoutError')),
@@ -73,7 +65,7 @@ async function request(path, { method = 'GET', body, params, signal, timeoutMs }
       signal: composed,
     });
   } catch (e) {
-    if (signal?.aborted) throw e; // genuine caller cancellation — stay silent
+    if (signal?.aborted) throw e;
     if (e.name === 'TimeoutError' || e.name === 'AbortError') {
       throw new ApiError('The request timed out. Please try again.', 408, { type: 'Timeout' });
     }

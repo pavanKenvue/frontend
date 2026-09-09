@@ -15,12 +15,6 @@ const DashboardEmbed = forwardRef(function DashboardEmbed(
 ) {
   const containerRef = useRef(null);
   const dashboardRef = useRef(null);
-  // Snapshot of the dashboard's own Controls, captured while seeding below —
-  // i.e. the true authored defaults, from before any user filtering could
-  // have touched them. Clear All reuses this instead of asking QuickSight to
-  // report its post-reset state fresh each time (see resetAll() in
-  // useQuickSightBridge.js for why that's unreliable, especially on a
-  // second reset in a row).
   const defaultParamsRef = useRef(null);
   const [status, setStatus] = useState('loading');
   const [errorMsg, setErrorMsg] = useState('');
@@ -36,16 +30,15 @@ const DashboardEmbed = forwardRef(function DashboardEmbed(
     setParameters: (params) => dashboardRef.current?.setParameters(params),
     reset: () => dashboardRef.current?.reset(),
     isReady: () => Boolean(dashboardRef.current),
-    // Triggers QuickSight's own print flow for the dashboard as it's
-    // currently filtered. The dashboard lives in a cross-origin iframe (an
-    // AWS-hosted URL), so a client-side screenshot library (html2canvas)
-    // can't read its content — this SDK method is the only way to get the
-    // real rendered visuals into a PDF (via the browser's print-to-PDF).
     initiatePrint: () => dashboardRef.current?.initiatePrint(),
     getParameters: () => dashboardRef.current?.getParameters(),
-    // The captured true-default snapshot (see defaultParamsRef above) —
-    // null until seeding has caught at least one non-empty parameter set.
     getDefaultParameters: () => defaultParamsRef.current,
+    getSelectedSheetId: () => dashboardRef.current?.getSelectedSheetId?.(),
+    getSheets: () => dashboardRef.current?.getSheets?.(),
+    getFilterGroupsForSheet: (sheetId) => dashboardRef.current?.getFilterGroupsForSheet?.(sheetId),
+    addFilterGroups: (groups) => dashboardRef.current?.addFilterGroups?.(groups),
+    updateFilterGroups: (groups) => dashboardRef.current?.updateFilterGroups?.(groups),
+    removeFilterGroups: (ids) => dashboardRef.current?.removeFilterGroups?.(ids),
   }));
 
   useEffect(() => {
@@ -53,12 +46,6 @@ const DashboardEmbed = forwardRef(function DashboardEmbed(
 
     (async () => {
       try {
-        // getEmbedUrl() (a backend round-trip) and createEmbeddingContext()
-        // (the SDK's own internal setup) don't depend on each other — only
-        // embedDashboard() below needs both. Running them concurrently
-        // instead of one after the other shaves the smaller of the two
-        // durations off the critical path before the iframe can even be
-        // created.
         const [embedUrl, embeddingContext] = await Promise.all([
           getEmbedUrl(),
           createEmbeddingContext(),
@@ -99,12 +86,6 @@ const DashboardEmbed = forwardRef(function DashboardEmbed(
         const contentOptions = {
           parameters: [],
           locale: 'en-US',
-          // Without this, the dashboard keeps the fixed pixel width/layout
-          // it was authored at and only catches up to a container resize
-          // (e.g. toggling the Filter Builder sidebar) via QuickSight's own
-          // internal, debounced resize detection — which is what made
-          // resizing feel late. fitSheetToWidth makes it track the iframe's
-          // actual width continuously instead.
           sheetOptions: {
             fitSheetToWidth: true,
           },
@@ -144,7 +125,6 @@ const DashboardEmbed = forwardRef(function DashboardEmbed(
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -164,10 +144,6 @@ const DashboardEmbed = forwardRef(function DashboardEmbed(
         </div>
       )}
       <div id="dashboard-container" ref={containerRef} />
-      {/* Brief veil while the sidebar's own width transition is running —
-          masks the moment where the iframe has resized but QuickSight
-          hasn't finished redrawing to fit yet, instead of showing that
-          squish-then-snap directly. */}
       {resizing && <div className="dashboard-resize-veil" />}
     </div>
   );

@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { FilterProvider } from './context/FilterContext';
 import { useQuickSightBridge } from './hooks/useQuickSightBridge';
+import { useFilterGroups } from './hooks/useFilterGroups';
 import { useFilters } from './context/FilterContext';
 import { useBookmarks } from './hooks/useBookmarks';
 import FilterBuilder from './components/FilterBuilder/FilterBuilder';
@@ -17,60 +18,66 @@ function AppInner() {
   const resizeVeilTimerRef = useRef(null);
   const embedRef = useRef(null);
 
-  // Sidebar toggling squeezes/frees the dashboard's width — .sidebar's own
-  // CSS transition (App.css) takes 250ms, and QuickSight needs a bit longer
-  // than that to finish redrawing to fit. A brief veil over the dashboard
-  // for that whole window (see dashboard-resize-veil in App.css) hides the
-  // squish-then-snap instead of showing it.
   const toggleSidebar = () => {
     setSidebarCollapsed((c) => !c);
     setDashboardResizing(true);
     clearTimeout(resizeVeilTimerRef.current);
     resizeVeilTimerRef.current = setTimeout(() => setDashboardResizing(false), 450);
   };
-  const { appliedFilters, paramForColumn } = useFilters();
+  const { appliedFilters, paramForColumn, filterGroupColumns } = useFilters();
 
   const { sendToQuickSight, resetAll, resetAndApply, handleParametersChanged } =
     useQuickSightBridge(embedRef);
+  const { applyColumnFilter, clearAllKnownFilterGroups } = useFilterGroups(embedRef, dashboardReady);
 
-  // ── Auto-restore a shared bookmark link (?bm=<id>) on first load ──
-  // Mirrors the vanilla index_v6.js behaviour: opening index.html?bm=<id>
-  // fresh should apply that bookmark's filters to the dashboard, not just
-  // show them in the Filter Builder. Read the id once at mount (a bookmark
-  // link is only ever meant to apply on the initial page load, not on every
-  // re-render), then fire it once the dashboard embed reports itself ready
-  // (see the onLoad handler passed to DashboardEmbed below) — applying any
-  // earlier would call setParameters() before embedRef.current exists.
   const bmIdRef = useRef(new URLSearchParams(window.location.search).get('bm'));
   const bmAppliedRef = useRef(false);
-  const { open: openBookmark } = useBookmarks({ onApplied: (paramValues) => resetAndApply(paramValues) });
 
-  // FilterBuilder -> QuickSight
-  const handleFilterApplied = (paramName, values) => {
-    sendToQuickSight(paramName, values);
+  const handleBookmarkApplied = async (paramValues) => {
+    const regular = {};
+    const groups = {};
+    Object.entries(paramValues || {}).forEach(([key, values]) => {
+      if (filterGroupColumns.has(key)) {
+        groups[key] = values;
+      } else {
+        regular[key] = values;
+      }
+    });
+    resetAndApply(regular);
+    await clearAllKnownFilterGroups();
+    Object.entries(groups).forEach(([col, values]) => applyColumnFilter(col, values));
+  };
+
+  const { open: openBookmark } = useBookmarks({ onApplied: handleBookmarkApplied });
+
+  const handleFilterApplied = (column, values) => {
+    if (filterGroupColumns.has(column)) {
+      const isCleared = values.length === 1 && String(values[0]).toLowerCase() === 'all';
+      applyColumnFilter(column, isCleared ? [] : values);
+      return;
+    }
+    sendToQuickSight(paramForColumn(column), values);
   };
 
   const handleResetAll = () => {
     resetAll();
+    clearAllKnownFilterGroups();
   };
 
   const handleClearRow = (clearedCol) => {
-    // Re-push whatever filters remain after removing this column's row,
-    // mirroring sendResetAndApply() in the vanilla JS. `appliedFilters` here
-    // can still be one render behind clearColumn(clearedCol) — React hasn't
-    // re-rendered yet at this point in the event handler — so exclude the
-    // cleared column explicitly rather than trusting it's already gone.
+    if (filterGroupColumns.has(clearedCol)) {
+      applyColumnFilter(clearedCol, []);
+      return;
+    }
     const remaining = {};
     Object.entries(appliedFilters).forEach(([col, f]) => {
       if (col === clearedCol) return;
+      if (filterGroupColumns.has(col)) return;
       remaining[f.paramName || paramForColumn(col)] = f.values;
     });
     resetAndApply(remaining);
   };
 
-  // QuickSight -> FilterBuilder (native Controls changed).
-  // Receives the full changedParameters batch; the bridge decides which of
-  // them are Controls parameters worth syncing.
   const handleParameterChange = (changedParameters, eventName) => {
     handleParametersChanged(changedParameters, eventName);
   };
@@ -81,11 +88,6 @@ function AppInner() {
       return;
     }
     try {
-      // Opens the browser's print dialog with the dashboard's own rendered
-      // output (current filters included) — choose "Save as PDF" as the
-      // destination. A client-side screenshot can't reach into the
-      // cross-origin QuickSight iframe, so this SDK call is the only way to
-      // get the real charts into a PDF.
       await embedRef.current.initiatePrint();
     } catch (e) {
       console.error('[export] initiatePrint failed:', e);
@@ -97,9 +99,6 @@ function AppInner() {
     const bmId = bmIdRef.current;
     if (!bmId || bmAppliedRef.current) return;
     bmAppliedRef.current = true;
-    // Small extra delay so the embed's own postMessage channel has settled
-    // before the first setParameters() call — same reasoning as the 500ms
-    // buffer after FRAME_LOADED in the vanilla index_v6.js implementation.
     setTimeout(() => {
       openBookmark(bmId).catch((e) => console.error('[bookmark] failed to restore from URL:', e));
     }, 500);
@@ -139,7 +138,7 @@ function AppInner() {
       <BookmarksPanel
         open={bookmarksOpen}
         onClose={() => setBookmarksOpen(false)}
-        onApplied={(paramValues) => resetAndApply(paramValues)}
+        onApplied={handleBookmarkApplied}
       />
 
       <div className="main">
