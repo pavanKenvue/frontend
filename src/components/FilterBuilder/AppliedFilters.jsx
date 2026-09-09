@@ -152,18 +152,25 @@ function AppliedFilters({ onRemoveValue, onClearColumn }) {
 
             return (
               <div key={col} className="fb-applied-row">
-                <div className="fb-applied-row-head">
+                <div className="fb-applied-label-strip">
                   <span className="fb-applied-col">{col}</span>
-                  <button className="fb-clear-row" onClick={() => onClearColumn(col)}>
-                    Clear
+                  <button
+                    className="fb-clear-row"
+                    onClick={() => onClearColumn(col)}
+                    aria-label={`Clear ${col} filter`}
+                    title={`Clear ${col} filter`}
+                  >
+                    ✕
                   </button>
                 </div>
-                <div className="fb-applied-chips">
+                <div className="fb-applied-values">
                   {visibleValues.map((v) => {
                     const vStr = String(v);
                     return (
-                      <span className="fb-chip" key={vStr}>
-                        <ChipValue value={vStr} />
+                      <div className="fb-value-pill" key={vStr}>
+                        <span>
+                          <ChipValue value={vStr} />
+                        </span>
                         <button
                           className="fb-chip-x"
                           onClick={() => onRemoveValue(col, vStr)}
@@ -171,7 +178,7 @@ function AppliedFilters({ onRemoveValue, onClearColumn }) {
                         >
                           ✕
                         </button>
-                      </span>
+                      </div>
                     );
                   })}
                   {hiddenCount > 0 && (

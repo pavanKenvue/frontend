@@ -1,4 +1,4 @@
-import { memo, useRef, useState } from 'react';
+import { memo, useEffect, useRef, useState } from 'react';
 import { searchAllColumns } from '../../api/filters';
 import { useFilters } from '../../context/FilterContext';
 
@@ -15,6 +15,8 @@ function HighlightedText({ text, query }) {
   );
 }
 
+const SEARCH_LOAD_MORE_STEP = 10;
+
 function SmartSearch({ onApplySelections }) {
   const { appliedFilters } = useFilters();
   const [query, setQuery] = useState('');
@@ -22,6 +24,8 @@ function SmartSearch({ onApplySelections }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
+  const [loadingMoreColumn, setLoadingMoreColumn] = useState(null);
+  const [loadMoreError, setLoadMoreError] = useState(null);
   const [selections, setSelections] = useState({});
   const initialSelectionsRef = useRef({});
   const inputRef = useRef(null);
@@ -36,11 +40,15 @@ function SmartSearch({ onApplySelections }) {
     setOpen(true);
     setLoading(true);
     setError(null);
+    setLoadMoreError(null);
     setSelections({});
     initialSelectionsRef.current = {};
     try {
       const data = await searchAllColumns({ q });
-      const nextResults = data?.results || [];
+      const nextResults = (data?.results || []).map((group) => ({
+        ...group,
+        total: group.total ?? group.count ?? group.matches.length,
+      }));
       setResults(nextResults);
       const preselected = {};
       nextResults.forEach((group) => {
@@ -72,6 +80,32 @@ function SmartSearch({ onApplySelections }) {
     setOpen(false);
     setResults([]);
     setSelections({});
+    setLoadMoreError(null);
+  };
+
+  const loadMoreForGroup = async (group) => {
+    const q = query.trim();
+    if (!q || loadingMoreColumn) return;
+    const nextLimit = Math.min(group.matches.length + SEARCH_LOAD_MORE_STEP, group.total);
+    setLoadingMoreColumn(group.column);
+    setLoadMoreError(null);
+    try {
+      const data = await searchAllColumns({ q, limit: nextLimit, columns: [group.column] });
+      const updated = data?.results?.find((g) => g.column === group.column);
+      if (updated) {
+        setResults((prev) =>
+          prev.map((g) =>
+            g.column === group.column
+              ? { ...g, matches: updated.matches, total: updated.total ?? updated.count ?? g.total }
+              : g
+          )
+        );
+      }
+    } catch (e) {
+      setLoadMoreError({ column: group.column, message: e.message || 'Failed to load more.' });
+    } finally {
+      setLoadingMoreColumn(null);
+    }
   };
 
   const keyFor = (column, paramName, value) => `${column}||${paramName}||${value}`;
@@ -149,7 +183,19 @@ function SmartSearch({ onApplySelections }) {
     }, 150);
   };
 
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    return () => document.removeEventListener('mousedown', handlePointerDown);
+  }, [open]);
+
   let dropdownStyle = null;
+  let resultsStyle = null;
   if (open && anchorRect) {
     const viewportMargin = 8;
     const width = anchorRect.width;
@@ -157,120 +203,164 @@ function SmartSearch({ onApplySelections }) {
     const spaceBelow = window.innerHeight - anchorRect.bottom;
     const openUpward = spaceBelow < 260 && anchorRect.top > 260;
     dropdownStyle = openUpward
-      ? { left, bottom: window.innerHeight - anchorRect.top + 6, width }
-      : { left, top: anchorRect.bottom + 6, width };
+      ? { left, bottom: window.innerHeight - anchorRect.top + 6 }
+      : { left, top: anchorRect.bottom + 6 };
+    // The page itself never scrolls (body has overflow:hidden), so once a
+    // drag pushes this fixed-position box past the visible viewport there's
+    // no way to scroll and reveal the rest — it just silently disappears
+    // off-screen, which reads as the resize "stopping" even though nothing
+    // is actually capping it in CSS. Capping max-width/max-height here to
+    // the real remaining space from this anchor point lets a drag reach
+    // that true edge instead of overshooting into invisible territory.
+    const maxWidth = window.innerWidth - left - viewportMargin;
+    const maxHeight = openUpward
+      ? anchorRect.top - 6 - viewportMargin
+      : window.innerHeight - (anchorRect.bottom + 6) - viewportMargin;
+    // Set on the results box itself (not the dropdown wrapper) so it starts
+    // out matching the Filter Builder's width exactly, while the wrapper
+    // (align-items: flex-start, no width of its own) just shrink-wraps
+    // around it — that way dragging the results box's own resize handle
+    // wider grows the wrapper along with it instead of being clipped by a
+    // wrapper stuck at a fixed width.
+    resultsStyle = { width, maxWidth, maxHeight };
   }
 
   return (
-    <div className="fb-search-wrap" ref={wrapRef}>
-      <span className="fb-label">Smart Search</span>
-      <div className="fb-search-row" ref={searchRowRef}>
-        <input
-          ref={inputRef}
-          type="text"
-          className="fb-input"
-          placeholder="Enter 3 characters to search..."
-          autoComplete="off"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && runSearch()}
-          onBlur={handleBlur}
-        />
-        <button className="fb-search-btn" onClick={runSearch} disabled={loading}>
-          {loading ? <span className="fb-search-btn-spinner" aria-hidden="true" /> : 'Search'}
-        </button>
-        {query && (
-          <button className="fb-search-clear-btn" onClick={clearSearch}>
-            ✕
+    <>
+      {open && anchorRect && <div className="fb-search-overlay" />}
+      <div className="fb-search-wrap" ref={wrapRef}>
+        <span className="fb-label">Smart Search</span>
+        <div className="fb-search-row" ref={searchRowRef}>
+          <input
+            ref={inputRef}
+            type="text"
+            className="fb-input"
+            placeholder="Enter 3 characters to search..."
+            autoComplete="off"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+            onBlur={handleBlur}
+          />
+          <button className="fb-search-btn" onClick={runSearch} disabled={loading}>
+            {loading ? <span className="fb-search-btn-spinner" aria-hidden="true" /> : 'Search'}
           </button>
-        )}
-      </div>
-
-      {dropdownStyle && !loading && (
-        <div className="fb-search-dropdown" style={dropdownStyle}>
-          <div className="fb-search-results">
-            {error && <div className="fb-search-no-results">{error}</div>}
-            {!error && !results.length && (
-              <div className="fb-search-no-results">
-                No matches for "<strong>{query}</strong>"
-              </div>
-            )}
-            {!error &&
-              results.map((group, idx) => (
-                <div key={group.column}>
-                  <div className="fb-search-group-label">
-                    <span>
-                      {group.column}
-                      {group.total > group.matches.length && (
-                        <span style={{ fontWeight: 400, opacity: 0.6 }}>
-                          {' '}
-                          — {group.total} matches
-                        </span>
-                      )}
-                    </span>
-                    <label className="fb-search-group-select-all">
-                      <input
-                        type="checkbox"
-                        checked={isGroupFullySelected(group)}
-                        ref={(el) => {
-                          if (el) el.indeterminate = isGroupPartiallySelected(group);
-                        }}
-                        onChange={() => toggleGroupSelectAll(group)}
-                      />
-                      Select all
-                    </label>
-                  </div>
-                  {group.matches.map((val) => {
-                    const key = keyFor(group.column, group.paramName, val);
-                    return (
-                      <label
-                        key={key}
-                        className={`fb-search-result-item${selections[key] ? ' selected' : ''}`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={!!selections[key]}
-                          onChange={() => toggleSelection(group.column, group.paramName, val)}
-                        />
-                        <span>
-                          <HighlightedText text={val} query={query} />
-                        </span>
-                      </label>
-                    );
-                  })}
-                  {idx < results.length - 1 && <hr className="fb-search-divider" />}
-                </div>
-              ))}
-          </div>
-
-          {(selCount > 0 || hasChanges) && (
-            <div className="fb-search-apply-bar">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-                <span className="fb-search-sel-count">
-                  {selCount > 0
-                    ? `${selCount} value${selCount > 1 ? 's' : ''} selected`
-                    : 'All matches deselected'}
-                </span>
-                <label className="fb-search-select-all-btn">
-                  <input
-                    type="checkbox"
-                    checked={isAllResultsSelected}
-                    ref={(el) => {
-                      if (el) el.indeterminate = isSomeResultsSelected;
-                    }}
-                    onChange={toggleSelectAllResults}
-                  />
-                  Select all
-                </label>
-              </div>
-              <button className="fb-search-apply-all" onClick={applySelections} disabled={!hasChanges}>
-                Apply filters
-              </button>
-            </div>
+          {query && (
+            <button className="fb-search-clear-btn" onClick={clearSearch}>
+              ✕
+            </button>
           )}
         </div>
-      )}
-    </div>
+  
+        {dropdownStyle && !loading && (
+          <div className="fb-search-dropdown" style={dropdownStyle}>
+            <div className="fb-search-results" style={resultsStyle}>
+              {error && <div className="fb-search-no-results">{error}</div>}
+              {!error && !results.length && (
+                <div className="fb-search-no-results">
+                  No matches for "<strong>{query}</strong>"
+                </div>
+              )}
+              {!error &&
+                results.map((group, idx) => (
+                  <div key={group.column}>
+                    <div className="fb-search-group-label">
+                      <span>
+                        {group.column}
+                        {group.total > group.matches.length && (
+                          <span style={{ fontWeight: 400, opacity: 0.6 }}>
+                            {' '}
+                            — {group.total} matches
+                          </span>
+                        )}
+                      </span>
+                      <label className="fb-search-group-select-all">
+                        <input
+                          type="checkbox"
+                          checked={isGroupFullySelected(group)}
+                          ref={(el) => {
+                            if (el) el.indeterminate = isGroupPartiallySelected(group);
+                          }}
+                          onChange={() => toggleGroupSelectAll(group)}
+                        />
+                        All
+                      </label>
+                    </div>
+                    {group.matches.map((val) => {
+                      const key = keyFor(group.column, group.paramName, val);
+                      // Distinguishes a match that was already one of the
+                      // user's active filters (found via appliedFilters when
+                      // the search ran) from one they're newly checking off
+                      // in this search, so the two read as visually
+                      // different states rather than one flat "selected".
+                      const isAlreadyApplied = Boolean(initialSelectionsRef.current[key]);
+                      return (
+                        <label
+                          key={key}
+                          className={`fb-search-result-item${selections[key] ? ' selected' : ''}${
+                            selections[key] && isAlreadyApplied ? ' already-applied' : ''
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={!!selections[key]}
+                            onChange={() => toggleSelection(group.column, group.paramName, val)}
+                          />
+                          <span>
+                            <HighlightedText text={val} query={query} />
+                          </span>
+                        </label>
+                      );
+                    })}
+                    {group.total > group.matches.length && (
+                      <button
+                        type="button"
+                        className="fb-search-load-more-btn"
+                        onClick={() => loadMoreForGroup(group)}
+                        disabled={loadingMoreColumn === group.column}
+                      >
+                        {loadingMoreColumn === group.column
+                          ? 'Loading…'
+                          : `+${Math.min(SEARCH_LOAD_MORE_STEP, group.total - group.matches.length)} more`}
+                      </button>
+                    )}
+                    {loadMoreError?.column === group.column && (
+                      <div className="fb-search-load-more-error">{loadMoreError.message}</div>
+                    )}
+                    {idx < results.length - 1 && <hr className="fb-search-divider" />}
+                  </div>
+                ))}
+            </div>
+  
+            {(selCount > 0 || hasChanges) && (
+              <div className="fb-search-apply-bar">
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <span className="fb-search-sel-count">
+                    {selCount > 0
+                      ? `${selCount} value${selCount > 1 ? 's' : ''} selected`
+                      : 'All matches deselected'}
+                  </span>
+                  <label className="fb-search-select-all-btn">
+                    <input
+                      type="checkbox"
+                      checked={isAllResultsSelected}
+                      ref={(el) => {
+                        if (el) el.indeterminate = isSomeResultsSelected;
+                      }}
+                      onChange={toggleSelectAllResults}
+                    />
+                    Select all
+                  </label>
+                </div>
+                <button className="fb-search-apply-all" onClick={applySelections} disabled={!hasChanges}>
+                  Apply filters
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 

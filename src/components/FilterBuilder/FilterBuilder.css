@@ -22,6 +22,13 @@
   font-weight: 700;
   color: var(--white);
   margin-bottom: 12px;
+  /* A direct child of .fb-panel's flex column, like every other rule below
+     marked the same way — pinned to its natural size so 100% of any
+     squeeze lands on .fb-applied-list (flex:1 + min-height:0) instead of
+     being spread across every sibling, which is what let .fb-applied-list
+     render past .fb-panel's height and get silently clipped by its
+     overflow:hidden instead of actually scrolling. */
+  flex-shrink: 0;
 }
 
 .fb-subtitle {
@@ -33,6 +40,27 @@
 /* Smart search */
 .fb-search-wrap {
   margin-bottom: 8px;
+  /* Sits above .fb-search-overlay (z-index 400) so the search row itself
+     (and, being its DOM descendant, the results dropdown at z-index 500)
+     stay sharp while everything else behind the overlay blurs. */
+  position: relative;
+  z-index: 401;
+  /* See .fb-title — never shrink; .fb-applied-list is the one flex item
+     that should absorb any squeeze. */
+  flex-shrink: 0;
+}
+
+/* Full-viewport backdrop shown only while the results dropdown is open —
+   blurs/dims the dashboard and the rest of the Filter Builder behind it so
+   the open search list reads as the focused thing on screen. Sits below
+   .fb-search-wrap (and its dropdown) but above everything else. */
+.fb-search-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+  background: rgba(15, 30, 40, 0.25);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
 }
 
 .fb-label {
@@ -43,6 +71,11 @@
   color: rgba(255, 255, 255, 0.8);
   display: block;
   margin-bottom: 4px;
+  /* See .fb-title — never shrink; .fb-applied-list is the one flex item
+     that should absorb any squeeze. (Only matters for the "Column" label,
+     which is a direct child of .fb-panel — the "Smart Search" one sits
+     inside .fb-search-wrap, itself already pinned.) */
+  flex-shrink: 0;
 }
 
 .fb-search-row {
@@ -127,8 +160,8 @@
 .fb-search-dropdown {
   /* Floats on top of the rest of the Filter Builder (escaping .fb-panel's
      overflow:hidden) instead of pushing the column picker/values list/
-     applied filters down the panel — top/left/width are set inline per
-     the anchor rect measured in SmartSearch.jsx. */
+     applied filters down the panel — top/left are set inline per the
+     anchor rect measured in SmartSearch.jsx. */
   position: fixed;
   z-index: 500;
   display: flex;
@@ -140,6 +173,15 @@
   overflow: hidden;
 }
 
+/* The plain Smart Search dropdown (not the ColumnSelect one, which sets its
+   width via left/right:0 against its own wrapper instead) has no width of
+   its own — align-items:flex-start makes it shrink-wrap around whatever
+   width its .fb-search-results child currently has, so dragging that
+   child's resize handle wider grows this wrapper right along with it. */
+.fb-search-dropdown:not(.fb-col-select-dropdown) {
+  align-items: flex-start;
+}
+
 .fb-search-results {
   max-height: 200px;
   overflow-y: auto;
@@ -148,6 +190,21 @@
      visible track/thumb, which read as a stray "icon" floating in the
      dropdown at this width. */
   scrollbar-width: none;
+}
+
+/* Smart Search's own results list (not the plain ColumnSelect dropdown,
+   which reuses this same class) can be dragged taller/wider from its
+   bottom-right corner to see more matches at once instead of always
+   scrolling a fixed 200px box. Its starting width is set inline (matching
+   the Filter Builder's own width) by SmartSearch.jsx's resultsStyle, so it
+   opens flush with the sidebar. No max-height/max-width here — the only
+   floor is min-height/min-width below, so it can be dragged open as far as
+   the viewport (and the browser's own resize ceiling) allows. */
+.fb-search-dropdown:not(.fb-col-select-dropdown) .fb-search-results {
+  height: 250px;
+  min-height: 100px;
+  min-width: 100%;
+  resize: both;
 }
 
 .fb-search-results::-webkit-scrollbar {
@@ -212,6 +269,20 @@
   background: rgba(0, 181, 155, 0.08);
 }
 
+/* A match that was already one of the user's active filters (not something
+   they're newly checking off in this search) — a distinct navy tint plus a
+   left accent bar so the two states read as different at a glance instead
+   of sharing the same teal "selected" highlight. */
+.fb-search-result-item.already-applied {
+  background: #00b59b;
+  border-left: 3px solid var(--navy);
+  padding-left: 9px;
+}
+
+.fb-search-result-item.already-applied:hover {
+  background: rgba(0, 107, 91, 0.18);
+}
+
 .fb-search-result-item input[type='checkbox'] {
   flex-shrink: 0;
   margin-top: 2px;
@@ -259,6 +330,7 @@
   background: var(--dark);
   gap: 8px;
   border-top: 2px solid #00b59b;
+  width: 100%;
 }
 
 .fb-search-sel-count {
@@ -316,10 +388,44 @@
   border-top: 1px solid #f0f0f0;
 }
 
+.fb-search-load-more-btn {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 4px 12px 8px;
+  padding: 5px 10px;
+  border: 1px solid rgba(0, 107, 91, 0.3);
+  border-radius: var(--radius);
+  background: rgba(0, 181, 155, 0.08);
+  color: var(--navy);
+  font-size: 10px;
+  font-weight: 700;
+  font-family: var(--font);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.fb-search-load-more-btn:hover:not(:disabled) {
+  background: rgba(0, 181, 155, 0.18);
+}
+
+.fb-search-load-more-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.fb-search-load-more-error {
+  padding: 0 12px 8px;
+  font-size: 10px;
+  color: #c0392b;
+}
+
 /* Column select */
 .fb-col-select-wrap {
   position: relative;
   margin-bottom: 8px;
+  /* See .fb-title — never shrink; .fb-applied-list is the one flex item
+     that should absorb any squeeze. */
+  flex-shrink: 0;
 }
 
 .fb-col-select-input {
@@ -381,7 +487,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
+  padding: 10px 10px;
   background: rgba(0, 0, 0, 0.08);
   border-bottom: 1px solid rgba(0, 0, 0, 0.08);
 }
@@ -567,7 +673,7 @@
 .fb-load-more-btn {
   width: 100%;
   padding: 7px 10px;
-  border: 1px solid rgba(0, 107, 91, 0.35);
+  border: 1px solid rgba(11, 150, 129, 0.35);
   border-radius: var(--radius);
   background: rgba(0, 181, 155, 0.1);
   color: var(--navy);
@@ -596,6 +702,9 @@
   background: var(--bg);
   padding: 8px 0 2px;
   z-index: 10;
+  /* See .fb-title — never shrink; .fb-applied-list is the one flex item
+     that should absorb any squeeze. */
+  flex-shrink: 0;
 }
 
 .fb-btn {
@@ -640,6 +749,9 @@
   border: none;
   border-top: 1px solid rgba(255, 255, 255, 0.25);
   margin: 6px 0;
+  /* See .fb-title — never shrink; .fb-applied-list is the one flex item
+     that should absorb any squeeze. */
+  flex-shrink: 0;
 }
 
 /* Applied filters */
@@ -647,7 +759,10 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: 5px;
+  /* See .fb-title — never shrink; .fb-applied-list is the one flex item
+     that should absorb any squeeze. */
+  flex-shrink: 0;
 }
 
 .fb-applied-title {
@@ -682,7 +797,7 @@
 .fb-applied-list {
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 6px;
   /* The one scrollable region in the panel — grows to fill whatever space
      is left below the rest of the Filter Builder (extending to the
      panel's bottom edge) and scrolls internally once its own content
@@ -702,47 +817,116 @@
 
 .fb-applied-row {
   background: var(--card-bg);
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 1px solid rgba(0, 107, 91, 0.14);
   border-radius: var(--radius);
-  padding: 7px 10px;
+  /* The colored label strip below supplies its own full-width background,
+     so it needs the row's rounded corners clipped onto it too. */
+  overflow: hidden;
   display: flex;
   flex-direction: column;
+  align-items: stretch;
+  /* Giving a flex item non-visible overflow (needed above, for the label
+     strip's clipping) disables its "automatic minimum size" — without this,
+     flexbox is then free to shrink each row to fit .fb-applied-list's
+     available height instead of leaving it at full size and letting the
+     list's own overflow-y:auto scroll past it. */
+  flex-shrink: 0;
+  /* A two-layer shadow (tight + wide) reads as a softer, more natural drop
+     shadow than one flat blur. */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.03);
 }
 
-.fb-applied-row-head {
+/* Colored header bar spanning the card's full width, with the column name
+   on the left and the row's clear button on the right — the values stack
+   below it in .fb-applied-values. */
+.fb-applied-label-strip {
   display: flex;
+  flex-direction: row;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 4px 8px;
+  /* Lighter than --navy (#006b5b) — the app's own mid-teal accent color,
+     already used elsewhere (e.g. .fb-panel's background), so it stays
+     within the existing palette instead of introducing a new color. */
+  background: #429c8d;
 }
 
 .fb-applied-col {
   font-size: 9px;
   font-weight: 700;
-  color: var(--navy);
+  color: var(--white);
   text-transform: uppercase;
   letter-spacing: 0.06em;
+  white-space: nowrap;
+  line-height: 1.2;
 }
 
 .fb-clear-row {
-  font-size: 9px;
-  font-weight: 700;
-  color: rgba(0, 0, 0, 0.45);
-  cursor: pointer;
-  text-decoration: underline;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 14px;
+  flex-shrink: 0;
   border: none;
-  background: none;
+  border-radius: 50%;
+  /* A light tint against the strip's own navy background — the row-level
+     shadows/borders used on a light card wouldn't register here. */
+  background: rgba(255, 255, 255, 0.2);
+  color: var(--white);
+  font-size: 8px;
+  line-height: 1;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, transform 0.15s ease;
 }
 
 .fb-clear-row:hover {
-  color: var(--danger);
+  background: var(--danger);
+  color: var(--white);
+  transform: scale(1.1);
 }
 
-.fb-applied-chips {
+.fb-clear-row:focus-visible {
+  outline: 2px solid var(--white);
+  outline-offset: 2px;
+}
+
+/* Value pills flow left-to-right and wrap, below the column name header bar
+   above — flex-direction:column here would stack each value on its own
+   full-width line, leaving a large dead gap to the right of short values
+   (e.g. numeric IDs) instead of packing several per line. */
+.fb-applied-values {
   display: flex;
+  flex-direction: row;
   flex-wrap: wrap;
+  gap: 2px;
+  padding: 4px 8px;
+}
+
+/* One value pill inside .fb-applied-values — distinct from .fb-chip below,
+   which stays a compact wrapping tag used only in the "all values"
+   popover's tag-cloud view. Sized to its own content so the ✕ sits right
+   next to the value instead of stretched away from it. */
+.fb-value-pill {
+  display: inline-flex;
+  max-width: 100%;
+  align-items: center;
   gap: 6px;
-  margin-left: 14px;
-  margin-top: 4px;
+  background: var(--white);
+  border: 1px solid rgba(0, 107, 91, 0.22);
+  border-radius: 20px;
+  padding: 5px 6px 5px 12px;
+  font-size: 10px;
+  color: var(--dark);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.03);
+}
+
+.fb-value-pill > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .fb-chip {
@@ -750,12 +934,19 @@
   align-items: center;
   gap: 4px;
   background: var(--white);
-  border: 1px solid rgba(0, 107, 91, 0.3);
-  border-radius: 20px;
+  border: 0.5px solid rgba(0, 107, 91, 0.25);
+  border-radius: 15px;
   padding: 2px 8px 2px 9px;
   font-size: 11px;
   color: var(--dark);
   font-weight: 600;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.02);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.fb-chip:hover {
+  border-color: rgba(0, 107, 91, 0.45);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.08);
 }
 
 .fb-chip-x {
@@ -765,7 +956,7 @@
   width: 13px;
   height: 13px;
   border-radius: 50%;
-  background: rgba(0, 107, 91, 0.2);
+  background: rgba(0, 80, 91, 0.2);
   color: var(--navy);
   font-size: 8px;
   font-weight: 700;
@@ -804,10 +995,11 @@
 .fb-chip-more {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   background: transparent;
   border: 1px dashed rgba(0, 107, 91, 0.4);
   border-radius: 20px;
-  padding: 2px 9px;
+  padding: 4px 9px;
   font-size: 11px;
   font-weight: 700;
   color: var(--navy);

@@ -48,7 +48,6 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
     setColumnFilter,
     removeFilterValue,
     clearColumn,
-    clearAllFilters,
   } = useFilters();
 
   const [selectedColumn, setSelectedColumn] = useState('');
@@ -172,11 +171,14 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
   };
 
   const handleClearAll = () => {
-    clearAllFilters();
+    // appliedFilters itself is left to onResetAll (App's handleResetAll ->
+    // useQuickSightBridge's resetAll), which collapses it down to just the
+    // dashboard's own default parameter values rather than wiping it to
+    // nothing — a blanket clearAllFilters() here would erase those defaults
+    // too, then have them flicker back in once the async reset resolves.
     setSelectedColumn('');
     setCheckedValues([]);
     setTextInput('');
-    setStatus({ msg: 'All filters cleared', type: '' });
     onResetAll?.();
   };
 

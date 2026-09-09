@@ -13,8 +13,14 @@ function normalizeIncomingValues(values) {
 }
 
 export function useQuickSightBridge(embedRef) {
-  const { applyExternalFilters, columnForParam, isControlParam, paramsForColumn, appliedFilters } =
-    useFilters();
+  const {
+    applyExternalFilters,
+    columnForParam,
+    isControlParam,
+    paramsForColumn,
+    appliedFilters,
+    setAppliedFilters,
+  } = useFilters();
 
   const recentlySentRef = useRef(new Map());
 
@@ -124,10 +130,39 @@ export function useQuickSightBridge(embedRef) {
     [applyExternalFilters, columnForParam, isControlParam]
   );
 
+  // Replaces (not merges into) appliedFilters with only the columns backed
+  // by one of these QuickSight parameters — used by resetAll so "Clear all"
+  // keeps the dashboard's own default values instead of wiping them too.
+  const applyDefaultsToAppliedFilters = useCallback(
+    (paramsList) => {
+      const defaultsByColumn = {};
+      (Array.isArray(paramsList) ? paramsList : []).forEach((p) => {
+        const paramName = p?.Name ?? p?.name;
+        if (!paramName || !isControlParam(paramName)) return;
+        const column = columnForParam(paramName);
+        if (!column) return;
+        const values = normalizeIncomingValues(p?.Values ?? p?.values);
+        if (!values.length) return;
+        defaultsByColumn[column] = { values, paramName };
+      });
+      setAppliedFilters(defaultsByColumn);
+    },
+    [isControlParam, columnForParam, setAppliedFilters]
+  );
+
   const resetAll = useCallback(async () => {
     const dashboard = embedRef.current;
     if (!dashboard) return;
     const generation = ++resetGenerationRef.current;
+
+    // Collapse the UI's applied filters down to just the dashboard's own
+    // default parameter values right away — synchronously, before any of
+    // the QuickSight calls below — instead of clearing to nothing and
+    // waiting for these same defaults to flow back in asynchronously. That
+    // gap used to show a flash of "no filters applied" before the defaults
+    // reappeared a moment later.
+    const cachedDefaults = dashboard.getDefaultParameters?.() || [];
+    applyDefaultsToAppliedFilters(cachedDefaults);
 
     try {
       dashboard.reset?.();
@@ -135,9 +170,7 @@ export function useQuickSightBridge(embedRef) {
       console.error('[qs-bridge] dashboard.reset() failed:', e);
     }
 
-    const cachedDefaults = dashboard.getDefaultParameters?.();
-    if (cachedDefaults?.length) {
-      handleParametersChanged(cachedDefaults, 'PARAMETERS_CHANGED');
+    if (cachedDefaults.length) {
       try {
         cachedDefaults.forEach((p) => {
           const name = p?.Name ?? p?.name;
@@ -158,13 +191,13 @@ export function useQuickSightBridge(embedRef) {
         const params = await dashboard.getParameters();
         if (generation !== resetGenerationRef.current) return;
         if (params?.length) {
-          handleParametersChanged(params, 'PARAMETERS_CHANGED');
+          applyDefaultsToAppliedFilters(params);
         }
       } catch (e) {
         console.error('[qs-bridge] getParameters after reset failed:', e);
       }
     }
-  }, [embedRef, handleParametersChanged, markSent]);
+  }, [embedRef, applyDefaultsToAppliedFilters, markSent]);
 
   const resetAndApply = useCallback(
     async (remaining) => {
