@@ -1,5 +1,6 @@
 :root {
   --bg: #00b59b;
+  --bg-deep: #009885;
   --card-bg: rgba(255, 255, 255, 0.9);
   --navy: #006b5b;
   --dark: #181818;
@@ -7,12 +8,18 @@
   --border: rgba(0, 0, 0, 0.1);
   --white: #ffffff;
   --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-md: 0 4px 16px rgba(15, 71, 97, 0.1);
+  --shadow-lg: 0 12px 32px rgba(15, 71, 97, 0.16);
   --radius: 10px;
-  --font: 'Montserrat', Arial, sans-serif;
+  --radius-sm: 6px;
+  --font: 'Montserrat', 'Segoe UI', Arial, sans-serif;
 
   --header-navy: #0f4761;
+  --header-navy-deep: #0b3a4f;
   --accent-yellow: #fac400;
   --danger: #c0392b;
+
+  color-scheme: light;
 }
 
 *,
@@ -31,21 +38,43 @@ body,
 }
 
 body {
-  font-family: 'Segoe UI', Arial, sans-serif;
-  background: #f9f7f7;
+  font-family: var(--font);
+  background: #f7f8f7;
   color: var(--dark);
   overflow: hidden;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 button {
   font-family: inherit;
 }
 
+button,
+input,
+textarea {
+  transition: box-shadow 0.15s ease, border-color 0.15s ease, background-color 0.15s ease,
+    color 0.15s ease, transform 0.1s ease;
+}
+
+/* A single consistent keyboard-focus ring app-wide, without adding a visible
+   outline on mouse/touch clicks (browsers already skip :focus-visible for
+   pointer interactions). */
+:focus-visible {
+  outline: 2px solid var(--bg);
+  outline-offset: 2px;
+}
+
 ::-webkit-scrollbar {
-  width: 4px;
+  width: 6px;
+  height: 6px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.15);
+  background: rgba(0, 0, 0, 0.18);
   border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
 }

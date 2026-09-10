@@ -4,10 +4,12 @@ import { useQuickSightBridge } from './hooks/useQuickSightBridge';
 import { useFilterGroups } from './hooks/useFilterGroups';
 import { useFilters } from './context/FilterContext';
 import { useBookmarks } from './hooks/useBookmarks';
+import { useToast } from './hooks/useToast';
 import FilterBuilder from './components/FilterBuilder/FilterBuilder';
 import DashboardEmbed from './components/DashboardEmbed';
 import BookmarksPanel from './components/BookmarksPanel';
 import ApiStatusBanner from './components/ApiStatusBanner';
+import Toast from './components/Toast';
 import './App.css';
 
 function AppInner() {
@@ -17,6 +19,7 @@ function AppInner() {
   const [dashboardResizing, setDashboardResizing] = useState(false);
   const resizeVeilTimerRef = useRef(null);
   const embedRef = useRef(null);
+  const { toast, leaving: toastLeaving, showToast } = useToast();
 
   const toggleSidebar = () => {
     setSidebarCollapsed((c) => !c);
@@ -135,10 +138,13 @@ function AppInner() {
         </div>
       </header>
 
+      <Toast toast={toast} leaving={toastLeaving} />
+
       <BookmarksPanel
         open={bookmarksOpen}
         onClose={() => setBookmarksOpen(false)}
         onApplied={handleBookmarkApplied}
+        showToast={showToast}
       />
 
       <div className="main">

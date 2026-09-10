@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useBookmarks } from '../hooks/useBookmarks';
 import { useFilters } from '../context/FilterContext';
 import { bookmarkUrlFor } from '../utils/bookmarkUrl';
@@ -128,7 +129,7 @@ async function buildBookmarkPdf(bmName, createdAt, url, filters) {
   doc.save(`${safeName}.pdf`);
 }
 
-export default function BookmarksPanel({ open, onClose, onApplied }) {
+export default function BookmarksPanel({ open, onClose, onApplied, showToast }) {
   const { appliedFilters } = useFilters();
   const {
     bookmarks,
@@ -181,11 +182,16 @@ export default function BookmarksPanel({ open, onClose, onApplied }) {
   useEffect(() => {
     if (!open) return;
     const onKey = (e) => {
-      if (e.key === 'Escape') onClose?.();
+      if (e.key !== 'Escape') return;
+      if (view === 'save') {
+        goToList();
+      } else {
+        onClose?.();
+      }
     };
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
-  }, [open, onClose]);
+  }, [open, onClose, view]);
 
   useEffect(() => {
     if (renamingId) renameInputRef.current?.select();
@@ -204,12 +210,14 @@ export default function BookmarksPanel({ open, onClose, onApplied }) {
     currentPage * BOOKMARKS_PAGE_SIZE
   );
 
-  const guard = async (fn) => {
+  const guard = async (fn, { success, error } = {}) => {
     setBusy(true);
     try {
       await fn();
+      if (success) showToast(success, 'success');
     } catch (e) {
       console.error('[bookmarks] action failed:', e);
+      if (error) showToast(error, 'error');
     } finally {
       setBusy(false);
     }
@@ -235,8 +243,10 @@ export default function BookmarksPanel({ open, onClose, onApplied }) {
     const url = bookmarkUrlFor(id);
     try {
       await navigator.clipboard.writeText(url);
+      showToast('Link copied to clipboard', 'success');
     } catch (e) {
       console.error('[bookmarks] clipboard write failed:', e);
+      showToast('Failed to copy link', 'error');
     }
   };
 
@@ -264,8 +274,10 @@ export default function BookmarksPanel({ open, onClose, onApplied }) {
     try {
       const created = await save(name);
       setSaveResult({ id: created.id, name: created.name, url: bookmarkUrlFor(created.id) });
+      showToast(`Bookmark "${created.name}" saved`, 'success');
     } catch (e) {
       console.error('[bookmarks] save failed:', e);
+      showToast('Failed to save bookmark', 'error');
     } finally {
       setBusy(false);
     }
@@ -281,9 +293,12 @@ export default function BookmarksPanel({ open, onClose, onApplied }) {
     setOpenLinkId((cur) => (cur === id ? null : id));
   };
 
-  const doOpen = (id) => {
+  const doOpen = (id, bmName) => {
     setOpenMenuId(null);
-    guard(() => openBookmark(id)).then(() => {
+    guard(() => openBookmark(id), {
+      success: `Applied filters from "${bmName || 'bookmark'}"`,
+      error: 'Failed to apply bookmark filters',
+    }).then(() => {
       setTimeout(onClose, 900);
     });
   };
@@ -298,26 +313,42 @@ export default function BookmarksPanel({ open, onClose, onApplied }) {
     const trimmed = renameValue.trim();
     setRenamingId(null);
     if (!trimmed || trimmed === originalName) return;
-    guard(() => rename(id, trimmed));
+    guard(() => rename(id, trimmed), {
+      success: `Bookmark renamed to "${trimmed}"`,
+      error: 'Failed to rename bookmark',
+    });
   };
 
-  const doDelete = async (id) => {
+  const doDelete = async (id, bmName) => {
     setOpenMenuId(null);
     setDeletingId(id);
     try {
-      await guard(() => remove(id));
+      await guard(() => remove(id), {
+        success: `Bookmark "${bmName || 'Untitled bookmark'}" deleted`,
+        error: 'Failed to delete bookmark',
+      });
     } finally {
       setDeletingId(null);
     }
   };
 
   return (
+    <>
     <div className="bm-side-panel" role="dialog" aria-label="Bookmarks">
       <div className="bm-panel-header">
-        <div>
-          <div className="bm-panel-title">Bookmarks</div>
-          <div className="bm-panel-subtitle">
-            {bookmarks.length ? `${bookmarks.length} saved` : 'Saved filter sets'}
+        <div className="bm-panel-title-row">
+          <button
+            className="bm-panel-back"
+            onClick={view === 'save' ? goToList : onClose}
+            aria-label="Back"
+          >
+            <Icon name="chevron" size={16} className="bm-back-chevron" />
+          </button>
+          <div>
+            <div className="bm-panel-title">Bookmarks</div>
+            <div className="bm-panel-subtitle">
+              {bookmarks.length ? `${bookmarks.length} saved` : 'Saved filter sets'}
+            </div>
           </div>
         </div>
         <button className="bm-panel-close" onClick={onClose} aria-label="Close">
@@ -326,111 +357,25 @@ export default function BookmarksPanel({ open, onClose, onApplied }) {
       </div>
 
       <div className="bm-panel-body">
-        {view === 'save' ? (
-          <div className="bm-panel-scroll">
-            <button className="bm-back-btn" onClick={goToList}>
-              <Icon name="chevron" size={14} className="bm-back-chevron" /> Back to list
-            </button>
-            {!saveResult && (
-              <>
-                <label className="bm-label" htmlFor="bm-name-input">
-                  Bookmark name
-                </label>
-                <input
-                  id="bm-name-input"
-                  className="bm-input"
-                  placeholder="e.g. Q3 Doctor review"
-                  maxLength={120}
-                  autoComplete="off"
-                  autoFocus
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && name.trim() && appliedEntries.length) {
-                      doSave();
-                    }
-                  }}
-                />
-              </>
-            )}
-            <label className="bm-label">Filters being saved</label>
-            {appliedEntries.length ? (
-              <div className="bm-chip-list">
-                {appliedEntries.map(([label, f]) => (
-                  <span className="bm-chip" key={label}>
-                    <span className="bm-chip-label">{label}</span>
-                    <span className="bm-chip-value">{summarizeValues(f.values)}</span>
-                  </span>
-                ))}
-              </div>
-            ) : (
-              <div className="bm-empty-state bm-empty-state-inline">
-                <Icon name="bookmark" size={22} className="bm-empty-icon" />
-                <div className="bm-empty-sub">Apply at least one filter to bookmark this view.</div>
-              </div>
-            )}
-            <button
-              className="bm-save-btn"
-              disabled={busy || !name.trim() || !appliedEntries.length || Boolean(saveResult)}
-              onClick={doSave}
-            >
-              {busy ? (
-                <>
-                  <span className="bm-btn-spinner" aria-hidden="true" /> Saving…
-                </>
-              ) : saveResult ? (
-                <>
-                  <Icon name="check" size={15} /> Saved
-                </>
-              ) : (
-                'Save bookmark'
-              )}
-            </button>
-            {saveResult && (
-              <div className="bm-save-result">
-                <label className="bm-label">Shareable link</label>
-                <input
-                  type="text"
-                  className="bm-input"
-                  value={saveResult.url}
-                  readOnly
-                  onClick={(e) => e.target.select()}
-                />
-                <div className="bm-save-result-actions">
-                  <button className="bm-save-btn bm-save-btn-secondary" onClick={() => copyLink(saveResult.id)}>
-                    <Icon name="link" size={14} /> Copy link
-                  </button>
-                  <button
-                    className="bm-save-btn bm-save-btn-secondary"
-                    onClick={() => saveLocally(saveResult.id, saveResult.name)}
-                  >
-                    <Icon name="download" size={14} /> Save locally
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
-          <>
-            <div className="bm-panel-fixed">
-              <button className="bm-add-btn" onClick={goToSave}>
-                <Icon name="plus" size={16} /> Add bookmark
-              </button>
+        <div className="bm-panel-fixed">
+          <button className="bm-add-btn" onClick={goToSave}>
+            <Icon name="plus" size={16} /> Add bookmark
+          </button>
 
-              {bookmarks.length > 0 && (
-                <div className="bm-search">
-                  <Icon name="search" size={14} className="bm-search-icon" />
-                  <input
-                    type="text"
-                    className="bm-search-input"
-                    placeholder="Search bookmarks…"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                  />
-                </div>
-              )}
+          {bookmarks.length > 0 && view !== 'save' && (
+            <div className="bm-search">
+              <Icon name="search" size={14} className="bm-search-icon" />
+              <input
+                type="text"
+                className="bm-search-input"
+                placeholder="Search bookmarks…"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+              />
             </div>
-            <div className="bm-panel-list">
+          )}
+        </div>
+        <div className="bm-panel-list">
             {loading && !bookmarks.length && (
               <div className="bm-skeleton-list" aria-hidden="true">
                 {[0, 1, 2].map((i) => (
@@ -535,7 +480,7 @@ export default function BookmarksPanel({ open, onClose, onApplied }) {
                               <Icon name="more" size={16} />
                             </button>
                             <div className={`bm-dropdown${openMenuId === b.id ? ' open' : ''}`}>
-                              <button disabled={busy} onClick={() => doOpen(b.id)}>
+                              <button disabled={busy} onClick={() => doOpen(b.id, b.name)}>
                                 <Icon name="external" size={14} /> Open (apply filters)
                               </button>
                               <button
@@ -553,7 +498,7 @@ export default function BookmarksPanel({ open, onClose, onApplied }) {
                               <button
                                 className="bm-danger"
                                 disabled={busy}
-                                onClick={() => doDelete(b.id)}
+                                onClick={() => doDelete(b.id, b.name)}
                               >
                                 <Icon name="trash" size={14} /> Delete
                               </button>
@@ -617,9 +562,112 @@ export default function BookmarksPanel({ open, onClose, onApplied }) {
                 </button>
               </div>
             )}
-          </>
-        )}
+        </div>
       </div>
-    </div>
+    {view === 'save' &&
+      createPortal(
+        <div className="bm-modal-backdrop" onClick={goToList}>
+          <div
+            className="bm-modal-card"
+            role="dialog"
+            aria-label="Add bookmark"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="bm-modal-header">
+              <div className="bm-panel-title">Add bookmark</div>
+              <button className="bm-panel-close" onClick={goToList} aria-label="Close">
+                <Icon name="x" size={18} />
+              </button>
+            </div>
+
+            {!saveResult && (
+              <>
+                <label className="bm-label" htmlFor="bm-name-input">
+                  Name
+                </label>
+                <input
+                  id="bm-name-input"
+                  className="bm-input"
+                  placeholder=""
+                  maxLength={120}
+                  autoComplete="off"
+                  autoFocus
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && name.trim() && appliedEntries.length) {
+                      doSave();
+                    }
+                  }}
+                />
+              </>
+            )}
+            <label className="bm-label">Filters being saved</label>
+            {appliedEntries.length ? (
+              <div className="bm-chip-list">
+                {appliedEntries.map(([label, f]) => (
+                  <span className="bm-chip" key={label}>
+                    <span className="bm-chip-label">{label}</span>
+                    <span className="bm-chip-value">{summarizeValues(f.values)}</span>
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <div className="bm-empty-state bm-empty-state-inline">
+                <Icon name="bookmark" size={22} className="bm-empty-icon" />
+                <div className="bm-empty-sub">Apply at least one filter to bookmark this view.</div>
+              </div>
+            )}
+            <button
+              className="bm-save-btn"
+              disabled={busy || !name.trim() || !appliedEntries.length || Boolean(saveResult)}
+              onClick={doSave}
+            >
+              {busy ? (
+                <>
+                  <span className="bm-btn-spinner" aria-hidden="true" /> Saving…
+                </>
+              ) : saveResult ? (
+                <>
+                  <Icon name="check" size={15} /> Saved
+                </>
+              ) : (
+                'Save bookmark'
+              )}
+            </button>
+            {saveResult && (
+              <div className="bm-save-result">
+                <label className="bm-label">Shareable link</label>
+                <div className="bm-save-result-link-row">
+                  <input
+                    type="text"
+                    className="bm-input"
+                    value={saveResult.url}
+                    readOnly
+                    onClick={(e) => e.target.select()}
+                  />
+                  <button
+                    className="bm-icon-btn"
+                    title="Copy link"
+                    onClick={() => copyLink(saveResult.id)}
+                  >
+                    <Icon name="link" size={15} />
+                  </button>
+                  <button
+                    className="bm-icon-btn"
+                    title="Save locally"
+                    onClick={() => saveLocally(saveResult.id, saveResult.name)}
+                  >
+                    <Icon name="download" size={15} />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
   );
 }
+

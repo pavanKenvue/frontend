@@ -16,8 +16,6 @@ function HighlightedText({ text, query }) {
   );
 }
 
-const SEARCH_LOAD_MORE_STEP = 10;
-
 function SmartSearch({ onApplySelections }) {
   const { appliedFilters } = useFilters();
   const [query, setQuery] = useState('');
@@ -25,8 +23,6 @@ function SmartSearch({ onApplySelections }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [loadingMoreColumn, setLoadingMoreColumn] = useState(null);
-  const [loadMoreError, setLoadMoreError] = useState(null);
   const [selections, setSelections] = useState({});
   const initialSelectionsRef = useRef({});
   const inputRef = useRef(null);
@@ -41,7 +37,6 @@ function SmartSearch({ onApplySelections }) {
     setOpen(true);
     setLoading(true);
     setError(null);
-    setLoadMoreError(null);
     setSelections({});
     initialSelectionsRef.current = {};
     try {
@@ -81,32 +76,6 @@ function SmartSearch({ onApplySelections }) {
     setOpen(false);
     setResults([]);
     setSelections({});
-    setLoadMoreError(null);
-  };
-
-  const loadMoreForGroup = async (group) => {
-    const q = query.trim();
-    if (!q || loadingMoreColumn) return;
-    const nextLimit = Math.min(group.matches.length + SEARCH_LOAD_MORE_STEP, group.total);
-    setLoadingMoreColumn(group.column);
-    setLoadMoreError(null);
-    try {
-      const data = await searchAllColumns({ q, limit: nextLimit, columns: [group.column] });
-      const updated = data?.results?.find((g) => g.column === group.column);
-      if (updated) {
-        setResults((prev) =>
-          prev.map((g) =>
-            g.column === group.column
-              ? { ...g, matches: updated.matches, total: updated.total ?? updated.count ?? g.total }
-              : g
-          )
-        );
-      }
-    } catch (e) {
-      setLoadMoreError({ column: group.column, message: e.message || 'Failed to load more.' });
-    } finally {
-      setLoadingMoreColumn(null);
-    }
   };
 
   const keyFor = (column, paramName, value) => `${column}||${paramName}||${value}`;
@@ -313,21 +282,6 @@ function SmartSearch({ onApplySelections }) {
                         </label>
                       );
                     })}
-                    {group.total > group.matches.length && (
-                      <button
-                        type="button"
-                        className="fb-search-load-more-btn"
-                        onClick={() => loadMoreForGroup(group)}
-                        disabled={loadingMoreColumn === group.column}
-                      >
-                        {loadingMoreColumn === group.column
-                          ? 'Loading…'
-                          : `+${Math.min(SEARCH_LOAD_MORE_STEP, group.total - group.matches.length)} more`}
-                      </button>
-                    )}
-                    {loadMoreError?.column === group.column && (
-                      <div className="fb-search-load-more-error">{loadMoreError.message}</div>
-                    )}
                     {idx < results.length - 1 && <hr className="fb-search-divider" />}
                   </div>
                 ))}

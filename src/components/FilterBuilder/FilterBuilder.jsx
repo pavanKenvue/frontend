@@ -277,7 +277,7 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
                 onChange={toggleSelectAll}
                 disabled={!displayedValues.length}
               />
-              Select all
+              All
             </label>
           </div>
           <input
