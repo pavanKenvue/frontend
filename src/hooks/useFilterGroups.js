@@ -18,11 +18,6 @@ function isFilterGroupTranslationNoise(reason) {
   return message.includes('FilterGroupTranslationError') || message.includes('no valid visual ids');
 }
 
-// The SDK's FilterGroupTranslationError embeds the raw, unparseable native
-// FilterGroup (as JSON) inside the error's stack rather than its message.
-// Pulling the id back out lets us remove that one broken group instead of
-// just logging and giving up -- it's what's failing sheet-wide validation
-// for every addFilterGroups/updateFilterGroups call.
 function extractBrokenFilterGroupId(reason) {
   if (!reason) return null;
   const blob = `${reason.stack || ''} ${reason.message || ''}`;
@@ -395,6 +390,7 @@ export function useFilterGroups(embedRef, dashboardReady) {
         if (pollBusyRef.current) return;
         pollBusyRef.current = true;
         try {
+          await flushPendingUpdates();
           await pollFilterGroupColumns();
         } finally {
           pollBusyRef.current = false;
