@@ -1,5 +1,4 @@
 import { memo, useMemo, useRef, useState } from 'react';
-import { formatColumnLabel } from '../../utils/formatColumn';
 
 function ColumnSelect({ columns, value, onChange, disabled }) {
   const [open, setOpen] = useState(false);
@@ -10,7 +9,7 @@ function ColumnSelect({ columns, value, onChange, disabled }) {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return columns;
-    return columns.filter((c) => formatColumnLabel(c).toLowerCase().includes(q));
+    return columns.filter((c) => c.toLowerCase().includes(q));
   }, [columns, query]);
 
   const pick = (col) => {
@@ -37,7 +36,7 @@ function ColumnSelect({ columns, value, onChange, disabled }) {
         placeholder={disabled ? 'Loading columns...' : 'Search for columns'}
         autoComplete="off"
         disabled={disabled}
-        value={open ? query : formatColumnLabel(value) || ''}
+        value={open ? query : value || ''}
         onFocus={() => {
           setQuery('');
           setOpen(true);
@@ -81,7 +80,7 @@ function ColumnSelect({ columns, value, onChange, disabled }) {
                 onMouseDown={(e) => e.preventDefault()}
                 onClick={() => pick(col)}
               >
-                <span>{formatColumnLabel(col)}</span>
+                <span>{col}</span>
               </div>
             ))}
           </div>

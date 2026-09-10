@@ -1,6 +1,5 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react';
 import { useFilters } from '../../context/FilterContext';
-import { formatColumnLabel } from '../../utils/formatColumn';
 
 const VISIBLE_LIMIT = 2;
 
@@ -64,7 +63,7 @@ function ValuesPopover({ col, values, anchorRect, onRemoveValue, onClearColumn, 
     <div className="fb-values-popover" ref={popRef} style={style}>
       <div className="fb-values-popover-head">
         <span>
-          {formatColumnLabel(col)} <span className="fb-values-popover-count">({values.length})</span>
+          {col} <span className="fb-values-popover-count">({values.length})</span>
         </span>
         <button
           className="fb-values-popover-close"
@@ -154,7 +153,7 @@ function AppliedFilters({ onRemoveValue, onClearColumn }) {
             return (
               <div key={col} className="fb-applied-row">
                 <div className="fb-applied-label-strip">
-                  <span className="fb-applied-col">{formatColumnLabel(col)}</span>
+                  <span className="fb-applied-col">{col}</span>
                   <button
                     className="fb-clear-row"
                     onClick={() => onClearColumn(col)}

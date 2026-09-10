@@ -1,7 +1,6 @@
 import { memo, useEffect, useRef, useState } from 'react';
 import { searchAllColumns } from '../../api/filters';
 import { useFilters } from '../../context/FilterContext';
-import { formatColumnLabel } from '../../utils/formatColumn';
 
 function HighlightedText({ text, query }) {
   if (!query) return text;
@@ -236,7 +235,7 @@ function SmartSearch({ onApplySelections }) {
                   <div key={group.column}>
                     <div className="fb-search-group-label">
                       <span>
-                        {formatColumnLabel(group.column)}
+                        {group.column}
                         {group.total > group.matches.length && (
                           <span style={{ fontWeight: 400, opacity: 0.6 }}>
                             {' '}
