@@ -1,10 +1,10 @@
-import { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { buildParamIndex, normalizeParamMap } from '../utils/paramMap';
-import columnDatasetMap from '../../column_dataset_map.json';
+import { loadColumnDatasetMap, localColumnDatasetMap } from '../utils/columnDatasetMap';
 
-function filterGroupColumnsFromDatasetMap() {
+function filterGroupColumnsFromDatasetMap(datasetMap) {
   const cols = new Set();
-  Object.entries(columnDatasetMap).forEach(([col, entries]) => {
+  Object.entries(datasetMap).forEach(([col, entries]) => {
     if (Array.isArray(entries) && entries.length && entries.every((e) => !e.parameter)) {
       cols.add(col);
     }
@@ -27,10 +27,28 @@ export function FilterProvider({ children }) {
   const [paramToColumn, setParamToColumn] = useState({});
   const [numericColumns, setNumericColumns] = useState(new Set());
   const [columnMeta, setColumnMeta] = useState({});
-  const [filterGroupColumns, setFilterGroupColumns] = useState(filterGroupColumnsFromDatasetMap);
+  const [filterGroupColumns, setFilterGroupColumns] = useState(() =>
+    filterGroupColumnsFromDatasetMap(localColumnDatasetMap)
+  );
+  const [columnDatasetMap, setColumnDatasetMap] = useState(localColumnDatasetMap);
   const [datasetMap, setDatasetMap] = useState({});
   const [crossDatasetColumns, setCrossDatasetColumns] = useState(new Set());
   const [defaultDatasetIdentifier, setDefaultDatasetIdentifier] = useState('');
+  const backendFilterGroupColumnsLoadedRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    loadColumnDatasetMap().then((map) => {
+      if (cancelled) return;
+      setColumnDatasetMap(map);
+      if (!backendFilterGroupColumnsLoadedRef.current) {
+        setFilterGroupColumns(filterGroupColumnsFromDatasetMap(map));
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const loadParamMap = useCallback((data) => {
     const { columnToParams: c2p, paramToColumn: p2c, reversed } = normalizeParamMap(data);
@@ -40,6 +58,7 @@ export function FilterProvider({ children }) {
     setColumnToParams(c2p);
     setParamToColumn(p2c);
     if (Array.isArray(data?.filterGroupColumns)) {
+      backendFilterGroupColumnsLoadedRef.current = true;
       setFilterGroupColumns(new Set(data.filterGroupColumns.map(String)));
       console.log('[filterGroups] filterGroupColumns loaded from backend:', data.filterGroupColumns);
     } else {
@@ -202,6 +221,7 @@ export function FilterProvider({ children }) {
       setColumnMeta,
       filterGroupColumns,
       isFilterGroupColumn,
+      columnDatasetMap,
       datasetMap,
       crossDatasetColumns,
       defaultDatasetIdentifier,
@@ -225,6 +245,7 @@ export function FilterProvider({ children }) {
       columnMeta,
       filterGroupColumns,
       isFilterGroupColumn,
+      columnDatasetMap,
       datasetMap,
       crossDatasetColumns,
       defaultDatasetIdentifier,

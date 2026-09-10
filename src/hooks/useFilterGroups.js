@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useRef } from 'react';
 import { useFilters } from '../context/FilterContext';
-import columnDatasetMap from '../../column_dataset_map.json';
 
 const FALLBACK_QS_DATASET_IDENTIFIER = import.meta.env.VITE_QS_DATASET_IDENTIFIER || '';
 const POLL_INTERVAL_MS = 10000;
 
-function fallbackDatasetIdentifierForColumn(col) {
+function fallbackDatasetIdentifierForColumn(columnDatasetMap, col) {
   const entries = columnDatasetMap[col];
   const name = Array.isArray(entries) && entries.length ? entries[0].dataset_identifier_name : null;
   return name || FALLBACK_QS_DATASET_IDENTIFIER;
@@ -51,8 +50,15 @@ async function getFilterGroupsForSheetSafe(dashboard, sheetId) {
 }
 
 export function useFilterGroups(embedRef, dashboardReady) {
-  const { filterGroupColumns, datasetMap, crossDatasetColumns, defaultDatasetIdentifier, setColumnFilter, clearColumn } =
-    useFilters();
+  const {
+    filterGroupColumns,
+    columnDatasetMap,
+    datasetMap,
+    crossDatasetColumns,
+    defaultDatasetIdentifier,
+    setColumnFilter,
+    clearColumn,
+  } = useFilters();
 
   const sheetIdRef = useRef(null);
   const nativeFilterGroupIdRef = useRef({});
@@ -82,8 +88,8 @@ export function useFilterGroups(embedRef, dashboardReady) {
       nativeDatasetIdRef.current[col] ||
       datasetMap[col] ||
       defaultDatasetIdentifier ||
-      fallbackDatasetIdentifierForColumn(col),
-    [datasetMap, defaultDatasetIdentifier]
+      fallbackDatasetIdentifierForColumn(columnDatasetMap, col),
+    [datasetMap, defaultDatasetIdentifier, columnDatasetMap]
   );
 
   // Mirrors argus_fe's crossDatasetFor: default to SINGLE_DATASET unless the

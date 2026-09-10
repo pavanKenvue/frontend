@@ -1,0 +1,36 @@
+import localColumnDatasetMap from '../../column_dataset_map.json';
+
+const S3_URL = import.meta.env.VITE_COLUMN_MAP_S3_URL || '';
+const FETCH_TIMEOUT_MS = 5000;
+
+export { localColumnDatasetMap };
+
+// Tries to load column_dataset_map.json from S3 (VITE_COLUMN_MAP_S3_URL) and
+// falls back to the bundled local copy if no URL is configured, the request
+// fails, or the response isn't a usable JSON object.
+export async function loadColumnDatasetMap() {
+  if (!S3_URL) {
+    return localColumnDatasetMap;
+  }
+
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(S3_URL, { signal: controller.signal });
+    if (!res.ok) throw new Error(`S3 fetch failed with status ${res.status}`);
+    const data = await res.json();
+    if (!data || typeof data !== 'object') {
+      throw new Error('S3 column_dataset_map.json was not a valid object');
+    }
+    console.log('[columnDatasetMap] loaded from S3:', S3_URL);
+    return data;
+  } catch (e) {
+    console.warn(
+      '[columnDatasetMap] failed to load from S3, falling back to bundled column_dataset_map.json:',
+      e?.message || e
+    );
+    return localColumnDatasetMap;
+  } finally {
+    clearTimeout(timer);
+  }
+}
