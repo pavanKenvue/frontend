@@ -1,3 +1,3 @@
 [
-  { "name": "safety_view", "title": "Safety View - COSMOS", "apiBaseUrl": "https://h38aqomaxk.execute-api.us-east-1.amazonaws.com/" }
-]
+  {"name": "aggegate", "title": "Aggregate", "apiBaseUrl":"https://s6fzzl9sn2.execute-api.us-east-1.amazonaws.com/"}
+] 
