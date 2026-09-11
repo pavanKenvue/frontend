@@ -4,111 +4,116 @@ set -euo pipefail
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root="$(cd "$script_dir/.." && pwd)"
 
-apps_json="${1:-$script_dir/apps.json}"
-bucket_name="${2:-}"
+APPS_JSON="${1:-$script_dir/apps.json}"
+BUCKET_NAME="${2:-}"
+CLOUDFRONT_DISTRIBUTION_ID="${3:-}"
+APP_LIST="${3:-}"
 
-if [ -z "$bucket_name" ]; then
-  echo "Usage:"
-  echo "  $0 <apps.json> <bucket-name>"
-  echo ""
-  echo "Example:"
-  echo "  $0 apps.json argus-cpd-dashboard-web-859217211726"
-  exit 1
+if [ -z "$BUCKET_NAME" ] || [ -z "$APP_LIST" ]; then
+    echo "Usage:"
+    echo "  $0 <apps.json> <bucket-name> <cloudfront-id> <app1,app2,app3>"
+    echo "./scripts/deploy.sh ./scripts/apps_.json argus-cpd-dashboard-web-859217211726 E1PC8Z0SI4SX1O safety_view"
+    exit 1
 fi
 
 cd "$repo_root"
 
-if [ ! -f "$apps_json" ]; then
-  echo "ERROR: apps config not found: $apps_json" >&2
-  exit 1
-fi
+IFS=',' read -ra REQUESTED_APPS <<< "$APP_LIST"
 
-if ! command -v node >/dev/null 2>&1; then
-  echo "ERROR: node is required" >&2
-  exit 1
-fi
-
-name_re='^[A-Za-z0-9_-]+$'
 count=0
 
-echo "Cleaning local build folder..."
-rm -rf build
-mkdir -p build
+for APP_NAME in "${REQUESTED_APPS[@]}"; do
 
-while IFS=$'\t' read -r name title api_base_url; do
-  [ -n "$name" ] || continue
+    echo
+    echo "=================================================="
+    echo "Processing: $APP_NAME"
+    echo "=================================================="
 
-  count=$((count + 1))
+    APP_INFO=$(node -e '
+        const fs = require("fs");
 
-  if ! [[ "$name" =~ $name_re ]]; then
-    echo "ERROR: Invalid app name '$name'" >&2
-    exit 1
-  fi
+        const apps = JSON.parse(
+            fs.readFileSync(process.argv[1], "utf8")
+        );
 
-  echo "=================================================="
-  echo "[$count] $name"
-  echo "=================================================="
+        const appName = process.argv[2];
 
-  #
-  # Delete previous S3 artifacts
-  #
-  echo "Deleting old artifacts from S3..."
+        const app = apps.find(a => a.name === appName);
 
-  aws s3 rm "s3://${bucket_name}/${name}.html" 2>/dev/null || true
-  aws s3 rm "s3://${bucket_name}/${name}/" --recursive 2>/dev/null || true
+        if (!app) process.exit(1);
 
-  #
-  # Build app
-  #
-  VITE_APP_TITLE="$title" \
-  VITE_API_BASE_URL="$api_base_url" \
-  npm run build -- \
-    --outDir "build/$name" \
-    --assetsDir "$name"
+        console.log(
+            `${app.name}\t${app.title || app.name}\t${app.apiBaseUrl}`
+        );
+    ' "$APPS_JSON" "$APP_NAME")
 
-  #
-  # Move HTML to build root
-  #
-  mv "build/$name/index.html" "build/${name}.html"
+    if [ -z "$APP_INFO" ]; then
+        echo "App not found in apps.json: $APP_NAME"
+        continue
+    fi
 
-  echo "Created:"
-  echo "  build/${name}.html"
-  echo "  build/${name}/"
-  echo
+    IFS=$'\t' read -r name title api_base_url <<< "$APP_INFO"
 
-done < <(node -e '
-const fs = require("fs");
-const path = process.argv[1];
+    echo "Cleaning local build..."
 
-const apps = JSON.parse(fs.readFileSync(path, "utf8"));
+    rm -rf build
+    mkdir -p build
 
-if (!Array.isArray(apps)) {
-  throw new Error("apps.json must be a JSON array");
-}
+    echo "Deleting old S3 artifacts..."
 
-const clean = (v) => String(v ?? "").replace(/[\t\n\r]/g, " ").trim();
+    aws s3 rm "s3://${BUCKET_NAME}/${name}.html" 2>/dev/null || true
+    aws s3 rm "s3://${BUCKET_NAME}/${name}/" --recursive 2>/dev/null || true
 
-for (const app of apps) {
-  const name = clean(app.name);
-  const title = clean(app.title ?? app.name);
-  const apiBaseUrl = clean(app.apiBaseUrl);
+    echo "Building..."
 
-  process.stdout.write(`${name}\t${title}\t${apiBaseUrl}\n`);
-}
-' "$apps_json")
+    VITE_APP_TITLE="$title" \
+    VITE_API_BASE_URL="$api_base_url" \
+    npm run build -- \
+        --outDir build \
+        --assetsDir "$name"
 
-if [ "$count" -eq 0 ]; then
-  echo "ERROR: No apps found in $apps_json" >&2
-  exit 1
+    if [ -f build/index.html ]; then
+        mv build/index.html "build/${name}.html"
+    fi
+
+    echo "Uploading HTML..."
+
+    aws s3 cp \
+        "build/${name}.html" \
+        "s3://${BUCKET_NAME}/${name}.html"
+
+    echo "Uploading Assets..."
+
+    aws s3 cp \
+        build/ \
+        "s3://${BUCKET_NAME}/" \
+        --recursive \
+        --exclude "${name}.html"
+
+    echo "Deployed: $name"
+
+    count=$((count + 1))
+
+done
+
+if [ -n "$CLOUDFRONT_DISTRIBUTION_ID" ]; then
+
+    echo
+    echo "Creating CloudFront Invalidation..."
+
+    INVALIDATION_ID=$(
+        aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths "/*" \
+            --query 'Invalidation.Id' \
+            --output text
+    )
+
+    echo "Invalidation ID: $INVALIDATION_ID"
 fi
 
 echo
-echo "Uploading build folder to S3..."
-
-aws s3 sync build/ "s3://${bucket_name}/" \
-  --delete
-
-echo
-echo "Build completed."
-echo "Apps built: $count"
-echo "S3 Bucket: $bucket_name"
+echo "======================================"
+echo "Deployment completed"
+echo "Apps deployed: $count"
+echo "======================================"

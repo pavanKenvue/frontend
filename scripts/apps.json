@@ -1,3 +1,9 @@
 [
-  {"name": "aggegate", "title": "Aggregate", "apiBaseUrl":"https://s6fzzl9sn2.execute-api.us-east-1.amazonaws.com/"}
+  { "name": "safety_view", "title": "Safety View - COSMOS", "apiBaseUrl": "https://h38aqomaxk.execute-api.us-east-1.amazonaws.com/" },
+  { "name": "argus_cpd", "title": "Argus CPD", "apiBaseUrl": "https://cybnp4lpcd.execute-api.us-east-1.amazonaws.com/" },
+  { "name": "meddra", "title": "Meddra", "apiBaseUrl": "https://gm7mu2i5d8.execute-api.us-east-1.amazonaws.com/" },
+  {"name": "smart_assessment", "title": "Smart and Assessment", "apiBaseUrl": "https://bk28o6bs67.execute-api.us-east-1.amazonaws.com/"},
+  {"name": "consumer", "title": "Consumer", "apiBaseUrl": "https://wj1yhbpbx0.execute-api.us-east-1.amazonaws.com/"},
+  {"name": "shipment", "title": "Shipment", "apiBaseUrl":"https://7rh6nzbl51.execute-api.us-east-1.amazonaws.com"},
+  {"name": "aggregate", "title": "Aggregate", "apiBaseUrl":"https://s6fzzl9sn2.execute-api.us-east-1.amazonaws.com/"}
 ] 
