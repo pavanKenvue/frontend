@@ -98,9 +98,6 @@ export function useFilterGroups(embedRef, dashboardReady) {
     [datasetIdentifiersFor]
   );
 
-  // Mirrors argus_fe's crossDatasetFor: default to SINGLE_DATASET unless the
-  // backend explicitly lists this column as shared across datasets, or the
-  // dashboard's own native FilterGroup for it already says otherwise.
   const crossDatasetFor = useCallback(
     (col) => {
       if (Object.prototype.hasOwnProperty.call(nativeCrossDatasetRef.current, col)) {
@@ -132,6 +129,7 @@ export function useFilterGroups(embedRef, dashboardReady) {
   
   const buildCategoryFilterGroup = useCallback(
     (col, values, status, groupId, datasetIdentifier) => {
+      console.log("datasetIdentifier", datasetIdentifier)
       return {
         FilterGroupId: groupId,
         Filters: [
