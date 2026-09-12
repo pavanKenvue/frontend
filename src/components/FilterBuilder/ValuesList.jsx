@@ -1,9 +1,21 @@
-import { memo } from 'react';
+import { memo, useEffect, useState } from 'react';
 import { sortValues, valuesMatch } from '../../utils/numericOps';
 
 function ValuesList({ values, checkedValues, onToggleValue, loading }) {
+  const [elapsedSec, setElapsedSec] = useState(0);
+
+  useEffect(() => {
+    if (!loading) return undefined;
+    setElapsedSec(0);
+    const start = Date.now();
+    const id = setInterval(() => {
+      setElapsedSec(Math.floor((Date.now() - start) / 1000));
+    }, 1000);
+    return () => clearInterval(id);
+  }, [loading]);
+
   if (loading) {
-    return <div className="fb-val-loading">Loading...</div>;
+    return <div className="fb-val-loading">Loading... ({elapsedSec}s)</div>;
   }
   if (!values.length) {
     return <div className="fb-val-empty">No values found</div>;

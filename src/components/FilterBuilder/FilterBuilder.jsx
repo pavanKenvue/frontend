@@ -44,6 +44,7 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
   const { columns, loading: columnsLoading } = useColumns();
   const {
     appliedFilters,
+    canonicalColumn,
     paramForColumn,
     setColumnFilter,
     removeFilterValue,
@@ -54,6 +55,8 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
   const [checkedValues, setCheckedValues] = useState([]);
   const [textInput, setTextInput] = useState('');
   const [status, setStatus] = useState({ msg: '', type: '' });
+  const [valuesBoxRevealed, setValuesBoxRevealed] = useState(false);
+  const prevValuesLoadingRef = useRef(false);
 
   const {
     allValues,
@@ -74,6 +77,8 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
   const lastPushedValuesRef = useRef([]);
 
   useEffect(() => {
+    setValuesBoxRevealed(false);
+    prevValuesLoadingRef.current = false;
     if (!selectedColumn) {
       setCheckedValues([]);
       setTextInput('');
@@ -86,6 +91,19 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
     setSearchTerm('');
     lastPushedValuesRef.current = existing;
   }, [selectedColumn]);
+
+  useEffect(() => {
+    if (!selectedColumn) return;
+    const wasLoading = prevValuesLoadingRef.current;
+    prevValuesLoadingRef.current = valuesLoading;
+    if (needsSearch) {
+      setValuesBoxRevealed(true);
+      return;
+    }
+    if (wasLoading && !valuesLoading && !valuesError) {
+      setValuesBoxRevealed(true);
+    }
+  }, [selectedColumn, valuesLoading, needsSearch, valuesError]);
 
   useEffect(() => {
     if (!selectedColumn) return;
@@ -176,9 +194,12 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
     // dashboard's own default parameter values rather than wiping it to
     // nothing — a blanket clearAllFilters() here would erase those defaults
     // too, then have them flicker back in once the async reset resolves.
-    setSelectedColumn('');
+    // selectedColumn is left alone so the currently open column search
+    // doesn't collapse — the appliedFilters sync effect below will bring
+    // checkedValues in line with whatever onResetAll settles on.
     setCheckedValues([]);
     setTextInput('');
+    lastPushedValuesRef.current = [];
     onResetAll?.();
   };
 
@@ -211,8 +232,13 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
 
   const handleApplySearchSelections = useCallback(
     (selections, matchedByColumn = {}) => {
+      // Smart Search results carry whatever column-name casing/spacing the /search
+      // endpoint returned, which may not match the /columns-derived casing already
+      // used as appliedFilters keys (e.g. from the sidebar Column dropdown). Canonicalize
+      // here so both paths merge into the same entry instead of producing a duplicate.
       const byColumn = {};
-      Object.entries(matchedByColumn).forEach(([col, matchedValues]) => {
+      Object.entries(matchedByColumn).forEach(([rawCol, matchedValues]) => {
+        const col = canonicalColumn(rawCol);
         const matchedSet = new Set(matchedValues.map(String));
         const existing = (appliedFilters[col]?.values || []).filter(
           (v) => !matchedSet.has(String(v))
@@ -222,7 +248,8 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
           values: new Set(existing),
         };
       });
-      selections.forEach(({ column, value }) => {
+      selections.forEach(({ column: rawColumn, value }) => {
+        const column = canonicalColumn(rawColumn);
         if (!byColumn[column]) {
           byColumn[column] = {
             paramName: paramForColumn(column),
@@ -237,7 +264,7 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
         onFilterApplied?.(col, valuesArr.length ? valuesArr : ['All']);
       });
     },
-    [paramForColumn, appliedFilters, setColumnFilter, onFilterApplied]
+    [paramForColumn, appliedFilters, setColumnFilter, onFilterApplied, canonicalColumn]
   );
 
   const appliedCount = Object.keys(appliedFilters).length;
@@ -280,15 +307,17 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
               All
             </label>
           </div>
-          <input
-            type="text"
-            className="fb-combined-search"
-            placeholder={
-              isNumericColumn ? 'Search, or type >, <, =' : 'Search values...'
-            }
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+          {valuesBoxRevealed && (
+            <input
+              type="text"
+              className="fb-combined-search"
+              placeholder={
+                isNumericColumn ? 'Search, or type >, <, =' : 'Search values...'
+              }
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          )}
           {needsSearch ? (
             <div className="fb-val-empty">
               This column has
@@ -346,7 +375,7 @@ export default function FilterBuilder({ onFilterApplied, onResetAll, onClearRow 
 
       {status.msg && <div className={`fb-status ${status.type}`}>{status.msg}</div>}
 
-      <hr className="fb-hr" />
+      {/* <hr className="fb-hr" /> */}
 
       <AppliedFilters onRemoveValue={handleRemoveValue} onClearColumn={handleClearColumnRow} />
     </div>

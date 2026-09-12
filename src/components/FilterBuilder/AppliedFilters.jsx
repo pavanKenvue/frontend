@@ -138,15 +138,17 @@ function AppliedFilters({ onRemoveValue, onClearColumn }) {
   return (
     <>
       <div className="fb-applied-header">
-        <span className="fb-applied-title">Applied Filters</span>
-        <span className="fb-applied-count">{entries.length}</span>
+          <span className="fb-applied-title">Applied Filters</span>
+          <span className="fb-applied-count">{entries.length}</span>
       </div>
+      <div className="fb-applied-section">
 
-      {!entries.length ? (
-        <div className="fb-empty-msg">No filters applied yet.</div>
-      ) : (
-        <div className="fb-applied-list">
-          {entries.map(([col, { values }]) => {
+
+        {!entries.length ? (
+          <div className="fb-empty-msg">No filters applied yet.</div>
+        ) : (
+          <div className="fb-applied-list">
+            {entries.map(([col, { values }]) => {
             const hiddenCount = values.length - VISIBLE_LIMIT;
             const visibleValues = hiddenCount > 0 ? values.slice(0, VISIBLE_LIMIT) : values;
 
@@ -191,7 +193,8 @@ function AppliedFilters({ onRemoveValue, onClearColumn }) {
             );
           })}
         </div>
-      )}
+        )}
+      </div>
 
       {openCol && (
         <ValuesPopover

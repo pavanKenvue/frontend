@@ -93,9 +93,39 @@ export function FilterProvider({ children }) {
 
   const paramIndex = useMemo(() => buildParamIndex(paramToColumn), [paramToColumn]);
 
+  // Different backend endpoints (e.g. /columns vs /search) don't always agree on the
+  // exact casing/whitespace of a column name. Without normalizing, the same column
+  // reached via two different UI paths (Smart Search vs the Column dropdown) would be
+  // stored under two different appliedFilters keys and show up as duplicate rows even
+  // though the labels render identically (the UI uppercases them via CSS). This index
+  // maps any casing/whitespace variant back to the one canonical spelling so every
+  // caller ends up keying appliedFilters the same way.
+  const columnKeyIndex = useMemo(() => {
+    const map = new Map();
+    const register = (col) => {
+      const key = String(col).trim().toLowerCase();
+      if (!map.has(key)) map.set(key, col);
+    };
+    Object.keys(columnToParams).forEach(register);
+    Object.keys(columnDatasetMap).forEach(register);
+    filterGroupColumns.forEach(register);
+    return map;
+  }, [columnToParams, columnDatasetMap, filterGroupColumns]);
+
+  const canonicalColumn = useCallback(
+    (column) => {
+      if (!column) return column;
+      return columnKeyIndex.get(String(column).trim().toLowerCase()) || column;
+    },
+    [columnKeyIndex]
+  );
+
   const paramsForColumn = useCallback(
-    (column) => columnToParams[column] || [column],
-    [columnToParams]
+    (column) => {
+      const col = canonicalColumn(column);
+      return columnToParams[col] || [col];
+    },
+    [columnToParams, canonicalColumn]
   );
 
   const paramForColumn = useCallback(
@@ -114,11 +144,12 @@ export function FilterProvider({ children }) {
   );
 
   const isFilterGroupColumn = useCallback(
-    (column) => filterGroupColumns.has(column),
-    [filterGroupColumns]
+    (column) => filterGroupColumns.has(canonicalColumn(column)),
+    [filterGroupColumns, canonicalColumn]
   );
 
-  const setColumnFilter = useCallback((col, values, paramName) => {
+  const setColumnFilter = useCallback((rawCol, values, paramName) => {
+    const col = canonicalColumn(rawCol);
     setAppliedFilters((prev) => {
       if (!values || !values.length) {
         if (!prev[col]) return prev;
@@ -137,7 +168,7 @@ export function FilterProvider({ children }) {
         [col]: { values: nextValues, paramName: nextParam },
       };
     });
-  }, []);
+  }, [canonicalColumn]);
 
   const applyExternalFilters = useCallback((updates) => {
     if (!updates?.length) return;
@@ -145,8 +176,9 @@ export function FilterProvider({ children }) {
       let changed = false;
       const next = { ...prev };
 
-      updates.forEach(({ column, values, paramName }) => {
-        if (!column) return;
+      updates.forEach(({ column: rawColumn, values, paramName }) => {
+        if (!rawColumn) return;
+        const column = canonicalColumn(rawColumn);
         if (!values || !values.length) {
           if (next[column]) {
             delete next[column];
@@ -166,9 +198,10 @@ export function FilterProvider({ children }) {
 
       return changed ? next : prev;
     });
-  }, []);
+  }, [canonicalColumn]);
 
-  const removeFilterValue = useCallback((col, value) => {
+  const removeFilterValue = useCallback((rawCol, value) => {
+    const col = canonicalColumn(rawCol);
     setAppliedFilters((prev) => {
       const existing = prev[col];
       if (!existing) return prev;
@@ -181,16 +214,17 @@ export function FilterProvider({ children }) {
       }
       return next;
     });
-  }, []);
+  }, [canonicalColumn]);
 
-  const clearColumn = useCallback((col) => {
+  const clearColumn = useCallback((rawCol) => {
+    const col = canonicalColumn(rawCol);
     setAppliedFilters((prev) => {
       if (!prev[col]) return prev;
       const next = { ...prev };
       delete next[col];
       return next;
     });
-  }, []);
+  }, [canonicalColumn]);
 
   const clearAllFilters = useCallback(() => {
     setAppliedFilters({});
@@ -211,6 +245,7 @@ export function FilterProvider({ children }) {
       columnToParams,
       paramToColumn,
       loadParamMap,
+      canonicalColumn,
       paramsForColumn,
       paramForColumn,
       columnForParam,
@@ -237,6 +272,7 @@ export function FilterProvider({ children }) {
       columnToParams,
       paramToColumn,
       loadParamMap,
+      canonicalColumn,
       paramsForColumn,
       paramForColumn,
       columnForParam,

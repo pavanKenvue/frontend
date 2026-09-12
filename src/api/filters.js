@@ -29,7 +29,8 @@ export function getFilterMultipleValues(
       limit,
       offset,
     },
-    signal
+    signal,
+    true // read-only lookup, safe to retry on a transient backend error
   );
 }
 

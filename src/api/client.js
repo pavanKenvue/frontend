@@ -13,8 +13,15 @@ class ApiError extends Error {
   }
 
   get isRetryable() {
-    return this.status === 503 || this.status === 504;
+    return this.status === 500 || this.status === 502 || this.status === 503 || this.status === 504;
   }
+}
+
+const MAX_RETRIES = 2;
+const RETRY_DELAY_MS = 500;
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function messageFrom(data, status) {
@@ -30,7 +37,7 @@ function messageFrom(data, status) {
   return `Request failed: ${status}`;
 }
 
-async function request(path, { method = 'GET', body, params, signal, timeoutMs } = {}) {
+async function requestOnce(path, { method = 'GET', body, params, signal, timeoutMs } = {}) {
   let url = `${BASE_URL}${path}`;
 
   if (params && Object.keys(params).length) {
@@ -92,9 +99,34 @@ async function request(path, { method = 'GET', body, params, signal, timeoutMs }
   return data;
 }
 
+// Transient backend blips (a 500/502/503/504, commonly a Lambda cold start) surface as
+// an ApiError that requestOnce would otherwise hand straight to the UI — showing an
+// error or an empty "No values found" for a moment before an unrelated retrigger (e.g.
+// the user changing column) happens to succeed a few seconds later. Retrying here,
+// silently, means the caller only ever sees the final outcome. GET/PUT/DELETE are
+// idempotent by convention so they're always retried; POST (typically a "create") is
+// only retried when the caller explicitly marks it as a read/idempotent operation, so
+// something like createBookmark never risks firing twice against a flaky backend.
+async function request(path, options = {}) {
+  const canRetry = options.method !== 'POST' || options.idempotent;
+  let lastErr;
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
+    try {
+      return await requestOnce(path, options);
+    } catch (e) {
+      lastErr = e;
+      if (options.signal?.aborted) throw e;
+      if (!(e instanceof ApiError) || !e.isRetryable || !canRetry || attempt === MAX_RETRIES) throw e;
+      await delay(RETRY_DELAY_MS * (attempt + 1));
+    }
+  }
+  throw lastErr;
+}
+
 export const apiClient = {
   get: (path, params, signal) => request(path, { method: 'GET', params, signal }),
-  post: (path, body, signal) => request(path, { method: 'POST', body, signal }),
+  post: (path, body, signal, idempotent = false) =>
+    request(path, { method: 'POST', body, signal, idempotent }),
   put: (path, body, signal) => request(path, { method: 'PUT', body, signal }),
   delete: (path, params, signal) => request(path, { method: 'DELETE', params, signal }),
 };

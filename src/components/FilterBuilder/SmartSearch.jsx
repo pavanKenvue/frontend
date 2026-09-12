@@ -16,7 +16,7 @@ function HighlightedText({ text, query }) {
 }
 
 function SmartSearch({ onApplySelections }) {
-  const { appliedFilters } = useFilters();
+  const { appliedFilters, canonicalColumn } = useFilters();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState([]);
   const [open, setOpen] = useState(false);
@@ -47,7 +47,7 @@ function SmartSearch({ onApplySelections }) {
       setResults(nextResults);
       const preselected = {};
       nextResults.forEach((group) => {
-        const appliedValues = appliedFilters[group.column]?.values;
+        const appliedValues = appliedFilters[canonicalColumn(group.column)]?.values;
         if (!appliedValues?.length) return;
         const appliedSet = new Set(appliedValues.map(String));
         group.matches.forEach((value) => {

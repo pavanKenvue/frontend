@@ -1,10 +1,10 @@
 .fb-panel {
   width: 100%;
   height: 100%;
-  background: linear-gradient(165deg, var(--bg) 0%, var(--bg-deep) 100%);
-  border-radius: 12px;
-  padding: 12px;
-  box-shadow: var(--shadow-lg);
+  /* background: linear-gradient(165deg, var(--bg) 0%, var(--bg-deep) 80%); */
+  border-radius: 2px;
+  padding: 6px;
+  /* box-shadow: var(--shadow-lg); */
   display: flex;
   flex-direction: column;
   /* The panel itself no longer scrolls — only .fb-applied-list below does
@@ -12,7 +12,7 @@
      it (search, column picker, values list, buttons) stays in place while
      Applied Filters scrolls on its own and fills down to the panel's
      bottom edge. */
-  overflow: hidden;
+  /* overflow: hidden; */
   font-family: var(--font);
   color: var(--dark);
 }
@@ -22,12 +22,6 @@
   font-weight: 700;
   color: var(--white);
   margin-bottom: 12px;
-  /* A direct child of .fb-panel's flex column, like every other rule below
-     marked the same way — pinned to its natural size so 100% of any
-     squeeze lands on .fb-applied-list (flex:1 + min-height:0) instead of
-     being spread across every sibling, which is what let .fb-applied-list
-     render past .fb-panel's height and get silently clipped by its
-     overflow:hidden instead of actually scrolling. */
   flex-shrink: 0;
 }
 
@@ -69,7 +63,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: rgba(255, 255, 255, 0.8);
+  /* color: rgba(255, 255, 255, 0.8); */
   display: block;
   margin-bottom: 4px;
   /* See .fb-title — never shrink; .fb-applied-list is the one flex item
@@ -92,7 +86,7 @@
   border-radius: var(--radius);
   font-size: 12.5px;
   font-family: var(--font);
-  color: var(--dark);
+  /* color: var(--dark); */
   background: #fff;
   outline: none;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
@@ -762,7 +756,7 @@
 
 .fb-hr {
   border: none;
-  border-top: 1px solid rgba(255, 255, 255, 0.25);
+  border-top: 5px solid rgba(255, 255, 255, 0.25);
   margin: 6px 0;
   /* See .fb-title — never shrink; .fb-applied-list is the one flex item
      that should absorb any squeeze. */
@@ -770,14 +764,40 @@
 }
 
 /* Applied filters */
+/* Wraps the header + list (or empty message) in one solid white box that
+   fills the rest of the panel down to its bottom edge — .fb-applied-list
+   used to own that flex:1/min-height:0 fill behavior directly against the
+   panel's teal background; it's lifted up here so the white background
+   extends through the leftover space below the last row too, not just
+   behind the rows themselves. */
+.fb-applied-section {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--white);
+  border-radius: var(--radius);
+  border-radius: 0 0 12px 12px;
+  /* No top padding — the header bar sits flush against the top edge,
+     clipped to this rounded corner by overflow:hidden below, instead of
+     leaving a strip of white section padding showing above it. */
+  padding: 0 8px 8px ;
+  overflow: hidden;
+}
+
 .fb-applied-header {
   display: flex;
   align-items: center;
+  border-radius: 12px 12px 0 0;
   justify-content: space-between;
-  margin-bottom: 5px;
-  /* See .fb-title — never shrink; .fb-applied-list is the one flex item
-     that should absorb any squeeze. */
+  margin-top: 10px;
   flex-shrink: 0;
+  padding: 6px 10px;
+  border: 10px;
+  /* Same teal bar treatment as .fb-applied-label-strip (the CASE_ID-style
+     row header), so this header reads as one more bar in that family. */
+  background: #3e3d3d;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 1px rgba(0, 0, 0, 0.03);
 }
 
 .fb-applied-title {
@@ -785,34 +805,37 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: rgba(255, 255, 255, 0.8);
+  color: var(--white);
 }
 
 .fb-applied-count {
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 700;
-  color: var(--dark);
-  background: var(--white);
-  border-radius: 10px;
-  padding: 1px 7px;
+  color: var(--white);
+  background: var(--navy);
+  border-radius: 12px;
+  padding: 2px 7px;
   min-width: 18px;
   text-align: center;
 }
 
 .fb-empty-msg {
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.75);
+  color: var(--navy);
   text-align: center;
   padding: 10px;
-  background: rgba(255, 255, 255, 0.15);
-  border: 1px dashed rgba(255, 255, 255, 0.35);
-  border-radius: var(--radius);
+  /* border:10px; */
+  margin-top: 10px;
+  background: rgba(0, 107, 91, 0.06);
+  border: 1px dashed rgba(0, 107, 91, 0.25);
+  border-radius: 6px;
 }
 
 .fb-applied-list {
   display: flex;
   flex-direction: column;
   gap: 6px;
+  padding: 6px 0 6px 0;
   /* The one scrollable region in the panel — grows to fill whatever space
      is left below the rest of the Filter Builder (extending to the
      panel's bottom edge) and scrolls internally once its own content
@@ -833,7 +856,7 @@
 .fb-applied-row {
   background: var(--card-bg);
   border: 0.5px solid rgba(0, 107, 91, 0.14);
-  border-radius: var(--radius);
+  border-radius: 5px;
   /* The colored label strip below supplies its own full-width background,
      so it needs the row's rounded corners clipped onto it too. */
   overflow: hidden;
@@ -937,8 +960,8 @@
   gap: 6px;
   background: var(--white);
   border: 1px solid rgba(0, 107, 91, 0.22);
-  border-radius: 20px;
-  padding: 5px 6px 5px 12px;
+  border-radius: 5px;
+  padding: 6px;
   font-size: 10px;
   color: var(--dark);
   font-weight: 600;
@@ -955,9 +978,9 @@
   align-items: center;
   gap: 4px;
   background: var(--white);
-  border: 0.5px solid rgba(0, 107, 91, 0.25);
-  border-radius: 15px;
-  padding: 2px 8px 2px 9px;
+  border: 0.5px solid rgba(1, 71, 61, 0.505);
+  border-radius: 6px;
+  padding: 3px;
   font-size: 11px;
   color: var(--dark);
   font-weight: 600;
@@ -1019,7 +1042,7 @@
   justify-content: center;
   background: transparent;
   border: 1px dashed rgba(0, 107, 91, 0.4);
-  border-radius: 20px;
+  border-radius: 6px;
   padding: 4px 9px;
   font-size: 11px;
   font-weight: 700;
@@ -1048,7 +1071,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 8px 10px;
+  padding: 6px;
   background: rgba(0, 181, 155, 0.1);
   border-bottom: 1px solid rgba(0, 181, 155, 0.2);
   font-size: 11px;
