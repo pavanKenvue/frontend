@@ -43,7 +43,7 @@ for APP_NAME in "${REQUESTED_APPS[@]}"; do
         if (!app) process.exit(1);
 
         console.log(
-            `${app.name}\t${app.title || app.name}\t${app.apiBaseUrl}`
+            `${app.name}\t${app.title || app.name}\t${app.apiBaseUrl}\t${app.qsDatasetIdentifier || ""}`
         );
     ' "$APPS_JSON" "$APP_NAME")
 
@@ -52,7 +52,7 @@ for APP_NAME in "${REQUESTED_APPS[@]}"; do
         continue
     fi
 
-    IFS=$'\t' read -r name title api_base_url <<< "$APP_INFO"
+    IFS=$'\t' read -r name title api_base_url qs_dataset_identifier <<< "$APP_INFO"
 
     echo "Cleaning local build..."
 
@@ -68,6 +68,7 @@ for APP_NAME in "${REQUESTED_APPS[@]}"; do
 
     VITE_APP_TITLE="$title" \
     VITE_API_BASE_URL="$api_base_url" \
+    VITE_QS_DATASET_IDENTIFIER="$qs_dataset_identifier" \
     npm run build -- \
         --outDir build \
         --assetsDir "$name"

@@ -5,9 +5,6 @@ const FETCH_TIMEOUT_MS = 5000;
 
 export { localColumnDatasetMap };
 
-// Tries to load column_dataset_map.json from S3 (VITE_COLUMN_MAP_S3_URL) and
-// falls back to the bundled local copy if no URL is configured, the request
-// fails, or the response isn't a usable JSON object.
 export async function loadColumnDatasetMap() {
   if (!S3_URL) {
     return localColumnDatasetMap;

@@ -4,10 +4,11 @@ import { useFilters } from '../context/FilterContext';
 const FALLBACK_QS_DATASET_IDENTIFIER = import.meta.env.VITE_QS_DATASET_IDENTIFIER || '';
 const POLL_INTERVAL_MS = 10000;
 
-function fallbackDatasetIdentifierForColumn(columnDatasetMap, col) {
+function datasetIdentifierNamesForColumn(columnDatasetMap, col) {
   const entries = columnDatasetMap[col];
-  const name = Array.isArray(entries) && entries.length ? entries[0].dataset_identifier_name : null;
-  return name || FALLBACK_QS_DATASET_IDENTIFIER;
+  if (!Array.isArray(entries) || !entries.length) return [];
+  const names = entries.map((e) => e.dataset_identifier_name).filter(Boolean);
+  return [...new Set(names)];
 }
 
 function isFilterGroupTranslationNoise(reason) {
@@ -66,30 +67,35 @@ export function useFilterGroups(embedRef, dashboardReady) {
   const nativeDatasetIdRef = useRef({});
   const nativeCrossDatasetRef = useRef({});
   const knownFilterGroupsRef = useRef({});
+  const knownGroupIdsRef = useRef({});
   const pendingRef = useRef([]);
   const readyRef = useRef(false);
   const pollBusyRef = useRef(false);
   const autoHealedIdsRef = useRef(new Set());
 
-  const filterGroupIdFor = useCallback(
-    (col) => nativeFilterGroupIdRef.current[col] || `fg_${col}`,
-    []
-  );
-  const filterIdFor = useCallback(
-    (col) => nativeFilterIdRef.current[col] || filterGroupIdFor(col),
-    [filterGroupIdFor]
+
+  const datasetIdentifiersFor = useCallback(
+    (col) => {
+      if (nativeDatasetIdRef.current[col]) return [nativeDatasetIdRef.current[col]];
+      if (datasetMap[col]) return [datasetMap[col]];
+      if (defaultDatasetIdentifier) return [defaultDatasetIdentifier];
+      const names = datasetIdentifierNamesForColumn(columnDatasetMap, col);
+      return names.length ? names : [FALLBACK_QS_DATASET_IDENTIFIER];
+    },
+    [datasetMap, defaultDatasetIdentifier, columnDatasetMap]
   );
 
-  // Mirrors argus_fe's datasetIdentifierFor: prefer whatever the dashboard's own
-  // native FilterGroup for this column already uses, then the backend-provided
-  // datasetMap, then the bundled column_dataset_map.json fallback.
-  const datasetIdentifierFor = useCallback(
-    (col) =>
-      nativeDatasetIdRef.current[col] ||
-      datasetMap[col] ||
-      defaultDatasetIdentifier ||
-      fallbackDatasetIdentifierForColumn(columnDatasetMap, col),
-    [datasetMap, defaultDatasetIdentifier, columnDatasetMap]
+  const groupTargetsForColumn = useCallback(
+    (col) => {
+      const identifiers = datasetIdentifiersFor(col);
+      return identifiers.map((datasetIdentifier) => ({
+        datasetIdentifier,
+        groupId:
+          nativeFilterGroupIdRef.current[col] ||
+          (identifiers.length > 1 ? `fg_${col}__${datasetIdentifier}` : `fg_${col}`),
+      }));
+    },
+    [datasetIdentifiersFor]
   );
 
   // Mirrors argus_fe's crossDatasetFor: default to SINGLE_DATASET unless the
@@ -125,14 +131,14 @@ export function useFilterGroups(embedRef, dashboardReady) {
 
   
   const buildCategoryFilterGroup = useCallback(
-    (col, values, status = 'ENABLED') => {
+    (col, values, status, groupId, datasetIdentifier) => {
       return {
-        FilterGroupId: filterGroupIdFor(col),
+        FilterGroupId: groupId,
         Filters: [
           {
             CategoryFilter: {
-              Column: { ColumnName: col, DataSetIdentifier: datasetIdentifierFor(col) },
-              FilterId: filterIdFor(col),
+              Column: { ColumnName: col, DataSetIdentifier: datasetIdentifier },
+              FilterId: nativeFilterIdRef.current[col] || groupId,
               Configuration: {
                 FilterListConfiguration: {
                   MatchOperator: 'CONTAINS',
@@ -153,7 +159,15 @@ export function useFilterGroups(embedRef, dashboardReady) {
         Status: status,
       };
     },
-    [filterGroupIdFor, filterIdFor, datasetIdentifierFor, crossDatasetFor]
+    [crossDatasetFor]
+  );
+
+  const buildCategoryFilterGroupsForColumn = useCallback(
+    (col, values, status) =>
+      groupTargetsForColumn(col).map(({ groupId, datasetIdentifier }) =>
+        buildCategoryFilterGroup(col, values, status, groupId, datasetIdentifier)
+      ),
+    [groupTargetsForColumn, buildCategoryFilterGroup]
   );
 
   const discoverNativeFilterGroups = useCallback(async () => {
@@ -198,10 +212,14 @@ export function useFilterGroups(embedRef, dashboardReady) {
     if (!dashboard || !sheetIdRef.current) return;
     const nonNative = [...filterGroupColumns].filter((c) => !nativeFilterGroupIdRef.current[c]);
     if (!nonNative.length) return;
+    const ownGroupIds = new Set();
+    nonNative.forEach((c) => {
+      groupTargetsForColumn(c).forEach(({ groupId }) => ownGroupIds.add(groupId));
+    });
     try {
       const existing = await getFilterGroupsForSheetSafe(dashboard, sheetIdRef.current);
       const staleIds = (existing || [])
-        .filter((g) => nonNative.some((c) => g.FilterGroupId === `fg_${c}`))
+        .filter((g) => ownGroupIds.has(g.FilterGroupId))
         .map((g) => g.FilterGroupId);
       if (staleIds.length) {
         await dashboard.removeFilterGroups(staleIds);
@@ -210,7 +228,7 @@ export function useFilterGroups(embedRef, dashboardReady) {
     } catch (e) {
       console.error('[filter-groups] cleanupStaleFilterGroups failed:', e.message);
     }
-  }, [embedRef, filterGroupColumns]);
+  }, [embedRef, filterGroupColumns, groupTargetsForColumn]);
 
   const applyColumnFilter = useCallback(
     async (col, values) => {
@@ -223,30 +241,39 @@ export function useFilterGroups(embedRef, dashboardReady) {
       const known = knownFilterGroupsRef.current;
       const existed = Object.prototype.hasOwnProperty.call(known, col);
       const isNative = Boolean(nativeFilterGroupIdRef.current[col]);
+      const existingGroupIds = knownGroupIdsRef.current[col] || new Set();
 
       try {
         if (!values.length) {
           if (existed) {
             if (isNative) {
-              await dashboard.updateFilterGroups([
-                buildCategoryFilterGroup(col, known[col] || [], 'DISABLED'),
-              ]);
+              const groups = buildCategoryFilterGroupsForColumn(col, known[col] || [], 'DISABLED');
+              await dashboard.updateFilterGroups(groups);
               known[col] = [];
             } else {
-              await dashboard.removeFilterGroups([filterGroupIdFor(col)]);
+              const idsToRemove = [...existingGroupIds];
+              if (idsToRemove.length) await dashboard.removeFilterGroups(idsToRemove);
               delete known[col];
+              delete knownGroupIdsRef.current[col];
             }
           }
         } else {
-          const group = buildCategoryFilterGroup(col, values, 'ENABLED');
-          if (existed) {
-            console.log(`[filter-groups] updateFilterGroups payload for "${col}":`, group);
-            await dashboard.updateFilterGroups([group]);
-          } else {
-            console.log(`[filter-groups] addFilterGroups payload for "${col}":`, group);
-            await dashboard.addFilterGroups([group]);
+          const targets = groupTargetsForColumn(col);
+          const groups = targets.map(({ groupId, datasetIdentifier }) =>
+            buildCategoryFilterGroup(col, values, 'ENABLED', groupId, datasetIdentifier)
+          );
+          const toUpdate = isNative ? groups : groups.filter((g) => existingGroupIds.has(g.FilterGroupId));
+          const toAdd = isNative ? [] : groups.filter((g) => !existingGroupIds.has(g.FilterGroupId));
+          if (toUpdate.length) {
+            console.log(`[filter-groups] updateFilterGroups payload for "${col}":`, toUpdate);
+            await dashboard.updateFilterGroups(toUpdate);
+          }
+          if (toAdd.length) {
+            console.log(`[filter-groups] addFilterGroups payload for "${col}":`, toAdd);
+            await dashboard.addFilterGroups(toAdd);
           }
           known[col] = [...values];
+          knownGroupIdsRef.current[col] = new Set(targets.map((t) => t.groupId));
         }
       } catch (e) {
         const reason = typeof e === 'string' ? e : e?.message || e;
@@ -260,7 +287,7 @@ export function useFilterGroups(embedRef, dashboardReady) {
       }
       setColumnFilter(col, values, col);
     },
-    [embedRef, buildCategoryFilterGroup, filterGroupIdFor, setColumnFilter]
+    [embedRef, buildCategoryFilterGroup, buildCategoryFilterGroupsForColumn, groupTargetsForColumn, setColumnFilter]
   );
 
   const flushPendingUpdates = useCallback(async () => {
@@ -323,11 +350,19 @@ export function useFilterGroups(embedRef, dashboardReady) {
     const ownCols = cols.filter((c) => !nativeFilterGroupIdRef.current[c]);
     try {
       if (ownCols.length) {
-        await dashboard.removeFilterGroups(ownCols.map(filterGroupIdFor));
-        ownCols.forEach((c) => delete known[c]);
+        const ownGroupIds = [];
+        ownCols.forEach((c) => {
+          const ids = knownGroupIdsRef.current[c];
+          if (ids) ownGroupIds.push(...ids);
+        });
+        if (ownGroupIds.length) await dashboard.removeFilterGroups(ownGroupIds);
+        ownCols.forEach((c) => {
+          delete known[c];
+          delete knownGroupIdsRef.current[c];
+        });
       }
       if (nativeCols.length) {
-        const groups = nativeCols.map((c) => buildCategoryFilterGroup(c, [], 'DISABLED'));
+        const groups = nativeCols.flatMap((c) => buildCategoryFilterGroupsForColumn(c, [], 'DISABLED'));
         await dashboard.updateFilterGroups(groups);
         nativeCols.forEach((c) => {
           known[c] = [];
@@ -337,7 +372,7 @@ export function useFilterGroups(embedRef, dashboardReady) {
       console.error('[filter-groups] clearAllKnownFilterGroups failed:', e.message);
     }
     cols.forEach((c) => clearColumn(c));
-  }, [embedRef, buildCategoryFilterGroup, filterGroupIdFor, clearColumn]);
+  }, [embedRef, buildCategoryFilterGroupsForColumn, clearColumn]);
 
   const pollFilterGroupColumns = useCallback(async () => {
     const dashboard = embedRef.current;
@@ -347,13 +382,19 @@ export function useFilterGroups(embedRef, dashboardReady) {
       const byCol = {};
       (groups || []).forEach((g) => {
         filterGroupColumns.forEach((col) => {
-          if (g.FilterGroupId !== filterGroupIdFor(col)) return;
+          const groupIds = groupTargetsForColumn(col).map((t) => t.groupId);
+          if (!groupIds.includes(g.FilterGroupId)) return;
           const cf = g.Filters?.[0]?.CategoryFilter;
           const vals =
             g.Status !== 'DISABLED' && cf?.Configuration?.FilterListConfiguration
               ? cf.Configuration.FilterListConfiguration.CategoryValues || []
               : [];
-          byCol[col] = vals.map(String);
+          // Multiple datasets for the same column share one set of values --
+          // once any of the column's FilterGroups reports non-empty values,
+          // keep those instead of letting a later empty one overwrite them.
+          if (vals.length || !byCol[col]) {
+            byCol[col] = vals.map(String);
+          }
         });
       });
       filterGroupColumns.forEach((col) => {
@@ -375,7 +416,7 @@ export function useFilterGroups(embedRef, dashboardReady) {
       });
     } catch (e) {
     }
-  }, [embedRef, filterGroupColumns, filterGroupIdFor, setColumnFilter]);
+  }, [embedRef, filterGroupColumns, groupTargetsForColumn, setColumnFilter]);
 
   useEffect(() => {
     if (!dashboardReady || !filterGroupColumns.size) return undefined;

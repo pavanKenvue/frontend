@@ -5,5 +5,5 @@
   {"name": "smart_assessment", "title": "Smart and Assessment", "apiBaseUrl": "https://bk28o6bs67.execute-api.us-east-1.amazonaws.com/", "qsDatasetIdentifier": ""},
   {"name": "consumer", "title": "Consumer", "apiBaseUrl": "https://wj1yhbpbx0.execute-api.us-east-1.amazonaws.com/", "qsDatasetIdentifier": ""},
   {"name": "shipment", "title": "Shipment", "apiBaseUrl":"https://7rh6nzbl51.execute-api.us-east-1.amazonaws.com", "qsDatasetIdentifier": ""},
-  {"name": "aggregate", "title": "Aggregate", "apiBaseUrl":"https://s6fzzl9sn2.execute-api.us-east-1.amazonaws.com/", "qsDatasetIdentifier": ""}
+  {"name": "aggegate", "title": "Aggregate", "apiBaseUrl":"https://s6fzzl9sn2.execute-api.us-east-1.amazonaws.com/", "qsDatasetIdentifier": ""}
 ] 

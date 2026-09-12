@@ -6,17 +6,16 @@
       "parameter": "pWidgetABBREV_NARRATIVE"
     }
   ],
-
   "ADVERSE_EVENT_YN": [
     {
       "dataset_identifier_name": "SQL_DS_LAB_DATA_DETAILS",
       "dataset_identifier_id": "0b8ee1f9-4a28-48e3-aef9-005b1e8e871b",
-      "parameter": "pWidgetADVERSE_EVENT_YN"
+      "parameter": ""
     },
     {
       "dataset_identifier_name": "SV_Golden_layer_Table_V3",
       "dataset_identifier_id": "2ae09e6d-b9bc-4d66-8c9c-a914c7091711",
-      "parameter": "pWidgetADVERSE_EVENT_YN"
+      "parameter": ""
     }
   ],
   "ADVERSE_WITHDRAWAL": [
