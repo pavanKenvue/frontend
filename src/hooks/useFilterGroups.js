@@ -129,7 +129,6 @@ export function useFilterGroups(embedRef, dashboardReady) {
   
   const buildCategoryFilterGroup = useCallback(
     (col, values, status, groupId, datasetIdentifier) => {
-      console.log("datasetIdentifier", datasetIdentifier)
       return {
         FilterGroupId: groupId,
         Filters: [
@@ -149,9 +148,6 @@ export function useFilterGroups(embedRef, dashboardReady) {
         ],
         ScopeConfiguration: {
           AllSheets: {}
-          // SelectedSheets: {
-          //   SheetVisualScopingConfigurations: [{ Scope: 'ALL_VISUALS', SheetId: sheetIdRef.current }],
-          // },
         },
         CrossDataset: crossDatasetFor(col),
         Status: status,

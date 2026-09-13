@@ -1,14 +1,9 @@
-import localColumnDatasetMap from '../../column_dataset_map.json';
-
 const S3_URL = import.meta.env.VITE_QS_DATASET_IDENTIFIER_URL || '';
-console.log("s3", S3_URL)
 const FETCH_TIMEOUT_MS = 5000;
-
-export { localColumnDatasetMap };
 
 export async function loadColumnDatasetMap() {
   if (!S3_URL) {
-    return localColumnDatasetMap;
+    return {};
   }
 
   const controller = new AbortController();
@@ -37,11 +32,11 @@ export async function loadColumnDatasetMap() {
     return data;
   } catch (e) {
     console.warn(
-      '[columnDatasetMap] failed to load from S3, falling back:',
+      '[columnDatasetMap] failed to load from S3:',
       e?.message || e
     );
 
-    return localColumnDatasetMap;
+    return {};
   } finally {
     clearTimeout(timer);
   }

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { buildParamIndex, normalizeParamMap } from '../utils/paramMap';
-import { loadColumnDatasetMap, localColumnDatasetMap } from '../utils/columnDatasetMap';
+import { loadColumnDatasetMap } from '../utils/columnDatasetMap';
 
 function filterGroupColumnsFromDatasetMap(datasetMap) {
   const cols = new Set();
@@ -27,10 +27,8 @@ export function FilterProvider({ children }) {
   const [paramToColumn, setParamToColumn] = useState({});
   const [numericColumns, setNumericColumns] = useState(new Set());
   const [columnMeta, setColumnMeta] = useState({});
-  const [filterGroupColumns, setFilterGroupColumns] = useState(() =>
-    filterGroupColumnsFromDatasetMap(localColumnDatasetMap)
-  );
-  const [columnDatasetMap, setColumnDatasetMap] = useState(localColumnDatasetMap);
+  const [filterGroupColumns, setFilterGroupColumns] = useState(() => new Set());
+  const [columnDatasetMap, setColumnDatasetMap] = useState({});
   const [datasetMap, setDatasetMap] = useState({});
   const [crossDatasetColumns, setCrossDatasetColumns] = useState(new Set());
   const [defaultDatasetIdentifier, setDefaultDatasetIdentifier] = useState('');
@@ -75,7 +73,7 @@ export function FilterProvider({ children }) {
       console.log('[filterGroups] datasetMap loaded from backend:', data.datasetMap);
     } else {
       console.warn(
-        '[filterGroups] Backend /columns had no "datasetMap" object — FilterGroups columns will fall back to the bundled column_dataset_map.json / default dataset identifier'
+        '[filterGroups] Backend /columns had no "datasetMap" object — FilterGroups columns will fall back to the S3 column_dataset_map.json / default dataset identifier'
       );
     }
     if (Array.isArray(data?.crossDatasetColumns)) {
